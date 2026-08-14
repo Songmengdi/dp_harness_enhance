@@ -1,6 +1,9 @@
 .DS_Store
 node_modules/
 
+# 参考项目(独立仓库,不纳入本仓库)
+agent-vision-toolkit/
+
 # 一次性测试图片（根目录遗留）
 vision-test.png
 vision-multi-a.png

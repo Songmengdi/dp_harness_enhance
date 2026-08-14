@@ -1,0 +1,65 @@
+{
+  "name": "dsh-mermaid-renderer",
+  "version": "1.2.0",
+  "description": "Durable mermaid diagram renderer for the dsh web GUI: renders ```mermaid code blocks from assistant output as theme-aware SVG cards with fit/zoom/pan, source view, copy, and retry — served through a same-origin Kroki proxy so the browser never dials external networks.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Songmengdi/dp_harness_enhance.git",
+    "directory": "dsh-mermaid-renderer"
+  },
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "node --test test/*.test.js",
+    "verify": "npm run typecheck && npm run build && npm run test",
+    "prepack": "npm run verify"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}

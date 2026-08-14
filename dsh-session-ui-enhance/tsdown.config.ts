@@ -71,6 +71,8 @@ function clientConfig(): UserConfig {
     dts: false,
     sourcemap: true,
     clean: false,
+    // mermaid 全量注册表体积大,压缩后约 1/3;loader 对内容透明。
+    minify: true,
     deps: {
       // Loader module table entries stay external (neverBundle wins over the
       // auto-externalization and over the alwaysBundle rule below).
@@ -105,20 +107,28 @@ function clientConfig(): UserConfig {
     }, {
       name: 'dsh-css-modules-inline',
       resolveId(source: string, importer: string | undefined) {
-        if (!source.endsWith('.module.css')) return null
+        const isModule = source.endsWith('.module.css')
+        // Plain .css (global, non-module) stylesheets take the same inline
+        // path, minus class hashing: they inject as-is and export nothing.
+        const isPlain = !isModule && source.endsWith('.css')
+        if (!isModule && !isPlain) return null
         const abs = importer !== undefined ? sourceAssetPath(source, importer) : source
-        return CSS_VIRTUAL_PREFIX + abs + CSS_VIRTUAL_SUFFIX
+        return CSS_VIRTUAL_PREFIX + abs + (isModule ? CSS_VIRTUAL_SUFFIX : '.plain' + CSS_VIRTUAL_SUFFIX)
       },
       async load(virtualId: string) {
         if (!virtualId.startsWith(CSS_VIRTUAL_PREFIX)) return null
-        const fileId = virtualId.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+        const plain = virtualId.endsWith('.plain' + CSS_VIRTUAL_SUFFIX)
+        const fileId = virtualId.slice(
+          CSS_VIRTUAL_PREFIX.length,
+          plain ? -('.plain' + CSS_VIRTUAL_SUFFIX).length : -CSS_VIRTUAL_SUFFIX.length,
+        )
         // The virtual id otherwise hides the physical stylesheet from the watch graph.
         this.addWatchFile(fileId)
         const source = await readFile(fileId)
         const { code, exports: cssExports } = transform({
           filename: fileId,
           code: source,
-          cssModules: { pattern: '[hash]_[local]' },
+          cssModules: plain ? false : { pattern: '[hash]_[local]' },
           minify: true,
         })
         // Iterate sorted keys: lightningcss emits `exports` with hash-map key
@@ -144,6 +154,9 @@ function clientConfig(): UserConfig {
     }],
     outputOptions: {
       entryFileNames: 'client.js',
+      // mermaid 的图类型按需动态 import;client bundle 契约是单文件
+      // (loader 只取 client.js),动态分块必须全部内联回入口。
+      inlineDynamicImports: true,
       banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(ID)}, factory: (require) => {`,
       footer: 'return module.exports; } });',
       intro: 'var module = { exports: {} }; var exports = module.exports;',

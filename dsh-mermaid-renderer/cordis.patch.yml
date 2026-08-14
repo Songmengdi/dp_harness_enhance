@@ -1,7 +1,0 @@
-# dsh-mermaid-renderer 组合包层:挂载插件行。
-# 行 id 为 `mermaid-renderer`,模块按包名解析;可调参数全部由
-# Config schema 提供默认值(见 README 配置表),此处不写死,
-# 用户可在自己 profile 的 cordis.patch.yml 中按 id 覆盖整段 config。
-- insert:
-    - id: mermaid-renderer
-      name: dsh-mermaid-renderer

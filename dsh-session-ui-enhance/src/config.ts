@@ -1,23 +1,15 @@
 /**
- * dsh-mermaid-renderer 配置契约:导出 Config 类型 + 同名 Schemastery schema,
+ * dsh-session-ui-enhance 配置契约:导出 Config 类型 + 同名 Schemastery schema,
  * 默认值写在 schema 里(可调参数一律字段化,不许硬编码)。
- * 客户端可见子集(CLIENT_DEFAULTS 等)来自 shared/client-config.ts,
- * 由单测断言两者默认值一致。
+ *
+ * v1.3.0 起 mermaid 渲染改为浏览器本地 mermaid.js(不再代理 Kroki),
+ * 因此 Config 与客户端可见子集完全同构;CLIENT_DEFAULTS 来自
+ * shared/client-config.ts,由单测断言两者默认值一致(防漂移)。
  */
 import Schema from '@deepseek-ai/schemastery'
 import { CLIENT_DEFAULTS, clientConfigOf, type ClientConfig, type DarkColors } from './shared/client-config.js'
 
 export interface Config {
-  /** Kroki 兼容渲染服务基地址(host 半边使用) */
-  krokiBaseUrl: string
-  /** Kroki 渲染路径(拼在基地址后) */
-  krokiPath: string
-  /** 上游渲染请求超时(ms) */
-  upstreamTimeoutMs: number
-  /** 渲染请求体上限(字节,超出返回 413) */
-  maxBodyBytes: number
-  /** 单张图源码上限(字节,超出返回 400) */
-  maxDiagramBytes: number
   /** 适配模式最大展示高度(px) */
   fitMaxHeight: number
   /** 缩放模式容器高度(px) */
@@ -26,20 +18,15 @@ export interface Config {
   zoomMinScale: number
   /** 缩放上限 */
   zoomMaxScale: number
-  /** 单图渲染超时(ms) */
+  /** 单图渲染超时(ms,本地渲染的兜底护栏) */
   renderTimeoutMs: number
-  /** 深色 GUI 下自动注入 dark theme(无显式 init 指令时) */
+  /** 跟随 GUI 深色主题渲染 dark theme(图源显式 init 指令优先) */
   themeAuto: boolean
   /** 深色重着色调色板 */
   darkColors: DarkColors
 }
 
 export const Config: Schema<Config> = Schema.object({
-  krokiBaseUrl: Schema.string().default('https://kroki.io'),
-  krokiPath: Schema.string().default('/mermaid/svg'),
-  upstreamTimeoutMs: Schema.number().min(1000).max(120000).default(30000),
-  maxBodyBytes: Schema.number().min(1024).max(1000000).default(200000),
-  maxDiagramBytes: Schema.number().min(256).max(100000).default(40000),
   fitMaxHeight: Schema.number().min(120).max(2000).default(CLIENT_DEFAULTS.fitMaxHeight),
   zoomBoxHeight: Schema.number().min(200).max(1200).default(CLIENT_DEFAULTS.zoomBoxHeight),
   zoomMinScale: Schema.number().min(0.05).max(1).default(CLIENT_DEFAULTS.zoomMinScale),

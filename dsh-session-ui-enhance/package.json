@@ -1,7 +1,7 @@
 {
   "name": "dsh-session-ui-enhance",
-  "version": "1.0.0",
-  "description": "Session UI enhancements for the dsh web GUI: a vertically centered rail of turn bars at the left edge of the conversation column (hover ramps bar lengths, hover card previews the turn input, click locates and highlights the message), plus tiered content-width breakpoints and breathing clearance.",
+  "version": "1.3.0",
+  "description": "Session UI enhancements for the dsh web GUI: a vertically centered rail of turn bars at the left edge of the conversation column (hover ramps bar lengths, hover card previews the turn input, click locates and highlights the message), tiered content-width breakpoints, a zcode-style markdown typography restyle (compact type scale, one-notch-heavier weights, pure-ink body text, framed tables, code-block cards with per-language brand icons), and a durable mermaid diagram renderer (```mermaid code blocks become theme-aware interactive SVG cards the moment the fence closes — rendered locally in the browser via mermaid.js, zero network dependency).",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -54,8 +54,12 @@
     "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.6",
+    "@types/node": "^22.0.0",
     "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.1",
     "lightningcss": "^1.32.0",
+    "mermaid": "^11.16.1",
     "react": "^18.2.0",
     "tsdown": "^0.22.2",
     "typescript": "^6.0.3"
@@ -64,6 +68,13 @@
     "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "build": "tsc -p tsconfig.host.json && tsc -p tsconfig.client.json && tsdown",
     "prepare": "npm run build",
-    "pack": "pnpm pack"
+    "pack": "pnpm pack",
+    "test": "node --test test/*.test.js",
+    "verify": "npm run typecheck && npm run build && npm run test",
+    "sync:profile": "cp lib/client.js lib/client.js.map lib/index.js \"$HOME/.dsh/profiles/web/node_modules/dsh-session-ui-enhance/lib/\"",
+    "dev": "npm run build && npm run sync:profile"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
   }
 }

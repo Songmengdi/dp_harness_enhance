@@ -26,25 +26,35 @@
 
 .card {
   position: absolute;
-  left: calc(100% + 14px);
+  left: calc(100% + 12px);
   top: 50%;
-  transform: translateY(-50%) translateX(-5px) scale(0.97);
-  transform-origin: left center;
+  transform: translateY(-50%) translateX(-4px);
   opacity: 0;
   pointer-events: none;
-  min-width: 244px;
-  max-width: 324px;
-  background: var(--dsw-alias-bg-overlay, #202123);
-  border: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
-  border-radius: 12px;
-  padding: 12px 14px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  transition: opacity 0.16s ease, transform 0.16s ease;
+  min-width: 220px;
+  max-width: 300px;
+  /* Content-first popover: quiet white surface, one hairline, no chrome —
+     the preview text is the payload, the meta row only names the turn. */
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  padding: 9px 12px 10px;
+  box-shadow:
+    0 1px 2px rgb(15 17 21 / 0.04),
+    0 8px 20px rgb(15 17 21 / 0.07);
+  -webkit-font-smoothing: antialiased;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+:global(body[data-ds-dark-theme]) .card {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.4),
+    0 8px 24px rgb(0 0 0 / 0.45);
 }
 
 .row:hover .card {
   opacity: 1;
-  transform: translateY(-50%) translateX(0) scale(1);
+  transform: translateY(-50%) translateX(0);
 }
 
 .row:focus-visible {
@@ -83,50 +93,47 @@
 .card::before {
   content: '';
   position: absolute;
-  left: -5px;
+  left: -4px;
   top: 50%;
   transform: translateY(-50%) rotate(45deg);
-  width: 9px;
-  height: 9px;
-  background: var(--dsw-alias-bg-overlay, #202123);
-  border-left: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
-  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
+  width: 7px;
+  height: 7px;
+  background: var(--dsw-alias-bg-overlay);
+  border-left: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
 
-.cardHead {
+.cardMeta {
   display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
 }
 
-.badge {
-  font-size: 10px;
+.cardTurn {
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.4px;
-  color: var(--dsw-alias-label-primary, #eeeeee);
-  background: rgba(128, 128, 128, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 999px;
-  padding: 2px 9px;
+  letter-spacing: 0.02em;
+  color: var(--dsw-alias-label-primary);
 }
 
-.cardHeadSub {
-  font-size: 11px;
-  letter-spacing: 0.3px;
-  color: var(--dsw-alias-label-secondary, #999999);
+.cardHint {
+  font-size: 10px;
+  color: color-mix(in srgb, var(--dsw-alias-label-secondary) 75%, transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease 0.15s;
 }
 
-.cardDivider {
-  height: 1px;
-  margin-bottom: 8px;
-  background: linear-gradient(90deg, var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.12)), rgba(255, 255, 255, 0));
+.row:hover .card .cardHint {
+  opacity: 1;
 }
 
 .cardText {
-  font-size: 12.5px;
-  line-height: 1.62;
-  color: var(--dsw-alias-label-primary, #eeeeee);
+  font-size: 12px;
+  line-height: 1.68;
+  font-weight: 450;
+  color: color-mix(in srgb, var(--dsw-alias-label-primary) 88%, transparent);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 128px;

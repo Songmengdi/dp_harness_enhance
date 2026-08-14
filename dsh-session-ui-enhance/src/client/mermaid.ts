@@ -1,49 +1,44 @@
 /**
- * dsh-mermaid-renderer — client 半边:把助手消息里的 ```mermaid 代码块
- * 原位替换成可交互 SVG 卡片(适配/缩放/平移、源码查看、复制、重试),
- * 跟随 GUI 主题,渲染走 host 同源代理。
+ * dsh-session-ui-enhance — mermaid 渲染模块(自 dsh-mermaid-renderer 融合):
+ * 把助手消息里的 ```mermaid 代码块原位替换成可交互 SVG 卡片(适配/缩放/
+ * 平移、源码查看、复制、重试),跟随 GUI 主题。
+ *
+ * 两次重要演进:
+ * - v1.3.0 起渲染在浏览器本地完成(mermaid.js 由构建期内联进 client
+ *   bundle,零网络依赖,不再走 host 的 Kroki 同源代理);
+ * - v1.3.0 起渲染时机提前:全局 MutationObserver 盯着代码块,fence 闭合、
+ *   文本稳定约 600ms 即原位替换,不再等整条消息定稿;语法门禁
+ *   (mermaid.parse)保证半截图源不弹错误卡片,定稿后语法仍失败才显示错误态。
  *
  * 配置契约:client bundle 无法拿到 host 侧的插件配置(boot graph 只含
  * id/url/rev/inject/immediately),所以启动时从 host 的 client-config 端点
  * 拉取配置快照,失败则回退到编译期默认值(与 host schema 默认值一致)。
  *
- * 平台纯度:值 import 只有 react / react-dom/client(平台模块表 seed 词),
- * @deepseek-ai/cordis 仅 type-only;跨包协作走 slots service。
+ * 平台纯度:值 import 是 react / react-dom(平台模块表 seed 词)与
+ * mermaid(构建期内联);@deepseek-ai/cordis 仅 type-only。
  */
-import { createElement, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createElement, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import mermaid from 'mermaid'
 import type { Context } from '@deepseek-ai/cordis'
-import { CLIENT_DEFAULTS, sanitizeClientConfig, type ClientConfig, type DarkColors } from './shared/client-config'
-import { buildDarkInjection, clamp, fitScaleFor, summarizeError, uniquifySvgIds } from './shared/diagram'
+import { CLIENT_DEFAULTS, sanitizeClientConfig, type ClientConfig, type DarkColors } from '../shared/client-config'
+import { clamp, fitScaleFor, summarizeError, uniquifySvgIds } from '../shared/diagram'
 
 // ── 契约常量 ────────────────────────────────────────────────────────────────
 const MOUNT_CLASS = 'tcm-mount'
 const CODE_BLOCK_CLASS = 'md-code-block'
-const SLOT_NAME = 'conversation.chat.assistant-actions'
-const SLOT_ID = 'mermaid-inline'
-const SLOT_ORDER = 90
-const RENDER_ENDPOINT = '/plugins/dsh-mermaid-renderer/render'
-const CONFIG_ENDPOINT = '/plugins/dsh-mermaid-renderer/client-config'
+const CONFIG_ENDPOINT = '/plugins/dsh-session-ui-enhance/client-config'
 const CONFIG_FETCH_TIMEOUT_MS = 5000
+/** 流式输出中代码文本稳定多久视为 fence 已闭合、可以尝试渲染。 */
+const STABLE_MS = 600
 
-// ── 运行时契约(结构性类型,契约面见 dsh-client-ui-slots / host 半边) ──────
+// ── 运行时契约(结构性类型,契约面见 host/client 主题 service) ─────────────
 interface ThemeSnapshot {
   active?: { colorScheme?: 'light' | 'dark' } | null
 }
 type ThemeSnapshotOrNull = ThemeSnapshot | null
 interface ThemeService {
   getTheme(): ThemeSnapshot
-}
-interface SlotRegisterOptions {
-  name: string
-  id?: string
-  order?: number
-  label?: string
-}
-type SlotComponent = (props: Record<string, unknown>) => unknown
-interface SlotsService {
-  inject(key: string, factory: () => void | (() => void)): void
-  register(options: SlotRegisterOptions, component: SlotComponent): () => void
 }
 
 type RenderResult =
@@ -52,8 +47,8 @@ type RenderResult =
 
 interface MermaidInlineProps {
   source: string
-  themeSvc?: ThemeService
-  cordisCtx?: Context
+  themeSvc?: ThemeService | undefined
+  cordisCtx?: Context | undefined
 }
 
 // ── 配置存储:apply 时拉取 host 配置快照,成功前用编译期默认值 ──────────────
@@ -132,7 +127,7 @@ const ICON_PATHS: Record<string, [string, Record<string, string | number>][]> = 
   ],
 }
 
-function Icon(props: { name: string; size?: number }) {
+function Icon(props: { name: string; size?: number | undefined }) {
   const entries = ICON_PATHS[props.name]
   if (entries === undefined) return null
   const children = entries.map((entry, i) =>
@@ -155,9 +150,9 @@ function Icon(props: { name: string; size?: number }) {
 function IconBtn(props: {
   icon: string
   title: string
-  size?: number
-  className?: string
-  onClick?: () => void
+  size?: number | undefined
+  className?: string | undefined
+  onClick?: (() => void) | undefined
 }) {
   return createElement('button', {
     type: 'button',
@@ -194,12 +189,12 @@ function measureSvg(hostEl: Element | null): { nw: number; nh: number } {
 
 function forceStyle(el: Element, props: Record<string, string>): void {
   const style = (el as HTMLElement).style
-  for (const key of Object.keys(props)) {
+  for (const [key, value] of Object.entries(props)) {
     try {
-      style.setProperty(key, props[key], 'important')
+      style.setProperty(key, value, 'important')
     } catch {
       try {
-        el.setAttribute('style', `${String(el.getAttribute('style') || '')};${key}:${props[key]} !important`)
+        el.setAttribute('style', `${String(el.getAttribute('style') || '')};${key}:${value} !important`)
       } catch {
         /* ignore */
       }
@@ -207,7 +202,7 @@ function forceStyle(el: Element, props: Record<string, string>): void {
   }
 }
 
-/** Kroki dark theme 的 class 布局固定,按调色板逐类重着色。 */
+/** mermaid dark theme 的 class 布局固定,按调色板逐类重着色。 */
 function recolorDark(hostEl: Element | null, colors: DarkColors): void {
   if (hostEl === null) return
   const svg = hostEl.querySelector('svg')
@@ -232,11 +227,31 @@ function recolorDark(hostEl: Element | null, colors: DarkColors): void {
   }
 }
 
-// ── 渲染(同源代理)─────────────────────────────────────────────────────────
+// ── 渲染(浏览器本地 mermaid.js)────────────────────────────────────────────
 let svgSeq = 0
 // 模块实例级随机盐:HMR 重载会重置 svgSeq,旧卡片未卸载时序号会撞
 // (mermaid SVG 内部以 #container 引用自身,同页重复 id 会串图)。
 const svgSalt = Math.random().toString(36).slice(2, 8)
+
+/** mermaid 全局 initialize 幂等化:只在主题切换时重新初始化。 */
+let mermaidTheme: 'default' | 'dark' | null = null
+
+function ensureMermaid(dark: boolean, cfg: ClientConfig): void {
+  const theme = dark && cfg.themeAuto ? 'dark' as const : 'default' as const
+  if (mermaidTheme === theme) return
+  mermaid.initialize({ startOnLoad: false, theme, securityLevel: 'strict' })
+  mermaidTheme = theme
+}
+
+/** 语法门禁:流式中途的半截图源返回 false,调用方据此保持静默等待。 */
+async function parseable(source: string): Promise<boolean> {
+  try {
+    await mermaid.parse(source)
+    return true
+  } catch {
+    return false
+  }
+}
 
 async function renderOne(
   source: string,
@@ -244,31 +259,18 @@ async function renderOne(
   cfg: ClientConfig,
   signal: AbortSignal,
 ): Promise<RenderResult> {
-  const { diagram, injected } = buildDarkInjection(source, dark, cfg.themeAuto)
+  ensureMermaid(dark, cfg)
+  svgSeq += 1
+  const id = `tcm-svg-${svgSalt}-${svgSeq.toString(36)}`
   try {
-    const res = await fetch(RENDER_ENDPOINT, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        diagram_source: diagram,
-        diagram_type: 'mermaid',
-        output_format: 'svg',
-      }),
-      signal,
-    })
-    const text = await res.text()
-    // 容忍 BOM / 前导空白:部分 Kroki 兼容服务会带 \uFEFF 或换行开头。
-    const svgText = text.replace(/^\uFEFF/, '').trimStart()
-    if (res.ok && svgText.startsWith('<svg')) {
-      svgSeq += 1
-      return { ok: true, svg: uniquifySvgIds(svgText, `tcm-svg-${svgSalt}-${svgSeq.toString(36)}`), darkRendered: injected }
-    }
-    return { ok: false, error: summarizeError(text || `HTTP ${res.status}`) }
+    const { svg } = await mermaid.render(id, source)
+    if (signal.aborted) return { ok: false, error: '渲染已取消' }
+    return { ok: true, svg: uniquifySvgIds(svg, id), darkRendered: dark && cfg.themeAuto }
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      return { ok: false, error: '渲染超时' }
-    }
     return { ok: false, error: summarizeError(error instanceof Error ? error.message : String(error)) }
+  } finally {
+    // mermaid 渲染失败时会把临时错误图节点(#d<id>)留在 document 下,清掉。
+    document.getElementById(`d${id}`)?.remove()
   }
 }
 
@@ -486,7 +488,7 @@ function DiagramCard(props: DiagramCardProps) {
   return createElement('div', { className: `tcm-card${cardDark ? ' tcm-card-dark' : ''}` }, head, body)
 }
 
-// ── 单图入口:拉取一次,主题变化重渲染,卸载/超时中止 ───────────────────────
+// ── 单图入口:本地渲染,主题变化重渲染,卸载中止 ────────────────────────────
 type ReactPointerEvent = { button: number; clientX: number; clientY: number; pointerId: number; target: EventTarget | null; currentTarget: HTMLElement }
 
 /** 订阅 GUI 主题变化;cordis 的 Events 表按 keyof 收紧,这里做字符串键的窄化面。 */
@@ -566,9 +568,16 @@ function MermaidInline(props: MermaidInlineProps) {
   return createElement(DiagramCard, { source: props.source, result: state.result, cfg })
 }
 
-// ── 原位 DOM 手术 ──────────────────────────────────────────────────────────
-const mountBlocks = new WeakMap<HTMLElement, Element>()
-const mountRoots = new WeakMap<HTMLElement, Root>()
+// ── 原位 DOM 手术(全局观察,流式即时挂载) ─────────────────────────────────
+interface Tracked {
+  mount: HTMLElement | null
+  root: Root | null
+  /** 最近一次观察到的代码文本 */
+  source: string
+  /** 最近一次挂载进卡片的代码文本 */
+  mountedSource: string
+  timer: ReturnType<typeof setTimeout> | null
+}
 
 function blockLang(block: Element): string {
   const wrap = block.firstElementChild
@@ -585,135 +594,38 @@ function readSource(block: Element): string {
   return text
 }
 
-function removeMount(mount: HTMLElement): void {
-  const root = mountRoots.get(mount)
-  if (root !== undefined) {
-    try {
-      root.unmount()
-    } catch {
-      /* ignore */
-    }
-  }
-  mount.remove()
+/**
+ * mermaid 图型的起始关键字(含可选 %%{init}%% 前缀)。
+ * 产品在流式臂会把 fence 语言抹成 undefined(ui-primitives renderCode:
+ * `lang: context.streaming ? void 0 : lang`),banner 在定稿前是空的——
+ * 所以对未标注的代码块用起始词嗅探兜底,最终仍以 mermaid.parse 门禁为准。
+ */
+const MERMAID_STARTERS = /^(?:%%\{[^}]*\}%%\s*)?(?:flowchart|graph|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|requirementDiagram|C4\w+|sankey(?:-beta)?|xychart(?:-beta)?|block(?:-beta)?|packet(?:-beta)?|architecture(?:-beta)?|kanban|radar|treemap|venn|wardley|cynefin|swimlanes|info)\b/
+
+/**
+ * 代码块语言判定:banner 有文本(定稿后)以 banner 为准;banner 为空
+ * (流式中)用 mermaid 起始词嗅探。返回 'mermaid' 或 ''(不关心)。
+ */
+function detectMermaid(block: Element): boolean {
+  const banner = blockLang(block)
+  if (banner !== '') return banner === 'mermaid'
+  return MERMAID_STARTERS.test(readSource(block).trimStart())
 }
 
-function unhideBlock(block: Element): void {
-  ;(block as HTMLElement).style.display = ''
-  delete (block as HTMLElement).dataset.tcmReplaced
-}
-
-/** 把一个 mermaid 代码块原位替换为 React 渲染的图卡片。 */
-function replaceBlock(block: Element, inlineProps: Omit<MermaidInlineProps, 'source'>): void {
-  const source = readSource(block)
-  if (source.length === 0) return
-  const blockEl = block as HTMLElement
-  blockEl.dataset.tcmReplaced = '1'
-  blockEl.style.display = 'none'
-  const mount = document.createElement('div')
-  mount.className = MOUNT_CLASS
-  block.parentNode?.insertBefore(mount, block.nextSibling)
-  mountBlocks.set(mount, block)
-  try {
-    const root = createRoot(mount)
-    mountRoots.set(mount, root)
-    root.render(createElement(MermaidInline, { ...inlineProps, source }))
-  } catch {
-    mount.textContent = 'Mermaid 渲染挂载失败'
-  }
-}
-
-/** 协调一行:清孤儿挂载点、修复被重放的替换、新增未替换的代码块。 */
-function syncRow(row: Element, inlineProps: Omit<MermaidInlineProps, 'source'>): void {
-  const mounts = Array.from(row.querySelectorAll(`.${MOUNT_CLASS}`)) as HTMLElement[]
-  for (const mount of mounts) {
-    const block = mountBlocks.get(mount)
-    const healthy = block !== undefined && block.isConnected
-      && mount.previousElementSibling === block
-      && (block as HTMLElement).style.display === 'none'
-      && (block as HTMLElement).dataset.tcmReplaced === '1'
-    if (!healthy) removeMount(mount)
-  }
-  const blocks = Array.from(row.querySelectorAll(`.${CODE_BLOCK_CLASS}`))
-  for (const block of blocks) {
-    if (blockLang(block) !== 'mermaid') continue
-    const mark = (block as HTMLElement).dataset.tcmReplaced === '1'
-    const next = block.nextElementSibling
-    const healthy = mark && (block as HTMLElement).style.display === 'none'
-      && next !== null && next.classList.contains(MOUNT_CLASS)
-      && mountBlocks.get(next as HTMLElement) === block
-      && mountRoots.has(next as HTMLElement)
-    if (healthy) continue
-    if (mark) unhideBlock(block)
-    if (next !== null && next.classList.contains(MOUNT_CLASS)) removeMount(next as HTMLElement)
-    replaceBlock(block, inlineProps)
-  }
-}
-
-/** 一轮的 row:从 tail row 向上收集到上一个 turn-tail row 为止。 */
-function collectTurnRows(tailRow: HTMLElement): Element[] {
-  const rows: Element[] = []
-  let cur: Element | null = tailRow
+/**
+ * 轮次定稿判定:沿代码块所在行向后找,出现 turn-tail / turn-error /
+ * 下一个 user 行即视为本轮已结束;流式进行中这些行都还不存在。
+ */
+function isTurnFinalized(block: Element): boolean {
+  const row = block.closest('[data-chat-flow-kind]')
+  if (row === null) return true
+  let cur = row.nextElementSibling
   while (cur !== null) {
-    rows.push(cur)
-    cur = cur.previousElementSibling
-    if (cur !== null && cur.getAttribute('data-chat-flow-kind') === 'turn-tail') break
+    const kind = cur.getAttribute('data-chat-flow-kind')
+    if (kind === 'turn-tail' || kind === 'turn-error' || kind === 'user') return true
+    cur = cur.nextElementSibling
   }
-  return rows
-}
-
-function restoreRows(rows: Element[]): void {
-  for (const row of rows) {
-    if (!row.isConnected) continue
-    for (const mount of Array.from(row.querySelectorAll(`.${MOUNT_CLASS}`)) as HTMLElement[]) {
-      removeMount(mount)
-    }
-    for (const block of Array.from(row.querySelectorAll(`.${CODE_BLOCK_CLASS}`))) {
-      if ((block as HTMLElement).dataset.tcmReplaced === '1') unhideBlock(block)
-    }
-  }
-}
-
-interface MermaidDriverProps extends Record<string, unknown> {
-  themeSvc?: ThemeService
-  cordisCtx?: Context
-}
-
-/** 不可见的 tail 入口,驱动它所在轮的代码块原位替换。 */
-function MermaidDriver(props: MermaidDriverProps) {
-  const anchorRef = useRef<HTMLSpanElement | null>(null)
-  useLayoutEffect(() => {
-    const anchor = anchorRef.current
-    if (anchor === null) return undefined
-    const tailRow = anchor.closest('[data-chat-flow-kind]')
-    if (tailRow === null || tailRow.parentElement === null) return undefined
-    const list = tailRow.parentElement
-    const inlineProps = { themeSvc: props.themeSvc, cordisCtx: props.cordisCtx }
-    let rafPending = false
-    const scan = () => {
-      // 每次扫描重新推导本轮的 rows:廉价,且列表重排/向上追加历史时依然稳健。
-      const rows = collectTurnRows(tailRow as HTMLElement)
-      for (const row of rows) {
-        if (row.isConnected) syncRow(row, inlineProps)
-      }
-    }
-    scan()
-    const observer = new MutationObserver(() => {
-      if (rafPending) return
-      rafPending = true
-      requestAnimationFrame(() => {
-        rafPending = false
-        scan()
-      })
-    })
-    observer.observe(list, { childList: true, subtree: true })
-    return () => {
-      observer.disconnect()
-      restoreRows(collectTurnRows(tailRow as HTMLElement))
-    }
-    // 驱动只随自身挂载生命周期运行一次。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-  return createElement('span', { ref: anchorRef, style: { display: 'none' } })
+  return false
 }
 
 // ── 样式(配置驱动)─────────────────────────────────────────────────────────
@@ -746,20 +658,22 @@ function buildCss(cfg: ClientConfig): string {
   ].join('\n')
 }
 
-// ── 插件 ────────────────────────────────────────────────────────────────────
-export function apply(ctx: Context): void {
-  const slots = ctx.get('slots') as SlotsService | undefined
-  if (slots === undefined) return
+// ── 模块入口 ─────────────────────────────────────────────────────────────────
+/**
+ * 由 client 插件入口(src/client/index.tsx)的 apply 调用。
+ * 观察器、样式、挂载点全部归属 fiber,卸载时全部还原。
+ */
+export function applyMermaidRenderer(ctx: Context): void {
   // style 注入归属 fiber:挂/摘都在 effect 里,fiber 启动失败不会泄漏节点。
   const styleTag = document.createElement('style')
-  styleTag.setAttribute('data-plugin', 'dsh-mermaid-renderer')
+  styleTag.setAttribute('data-plugin', 'dsh-session-ui-enhance')
   styleTag.textContent = buildCss(CLIENT_DEFAULTS)
   ctx.effect(() => {
     document.head.appendChild(styleTag)
     return () => {
       styleTag.remove()
     }
-  }, 'dsh-mermaid-renderer: base styles')
+  }, 'dsh-session-ui-enhance: mermaid base styles')
   // 配置快照:成功前用默认值渲染,成功后热替换 CSS 与运行时参数。
   void loadClientConfig()
     .then((cfg) => {
@@ -770,13 +684,130 @@ export function apply(ctx: Context): void {
       /* 保持编译期默认值 */
     })
   const themeSvc = ctx.get('theme') as ThemeService | undefined
-  const driverProps = { themeSvc, cordisCtx: ctx }
-  // 附加式 list slot:每个定稿助手消息一条,不与其他尾巴交付链竞争。
-  slots.inject(SLOT_NAME, () => slots.register(
-    { name: SLOT_NAME, id: SLOT_ID, order: SLOT_ORDER },
-    (props) => createElement(MermaidDriver, { ...props, ...driverProps }),
-  ))
-}
 
-export const inject = ['slots']
-export const name = 'dsh-mermaid-renderer'
+  const tracked = new Map<HTMLElement, Tracked>()
+
+  const disposeBlock = (block: HTMLElement): void => {
+    const entry = tracked.get(block)
+    if (entry === undefined) return
+    if (entry.timer !== null) clearTimeout(entry.timer)
+    if (entry.root !== null) {
+      try {
+        entry.root.unmount()
+      } catch {
+        /* ignore */
+      }
+    }
+    entry.mount?.remove()
+    if (block.isConnected) {
+      block.style.display = ''
+      delete block.dataset.tcmReplaced
+    }
+    tracked.delete(block)
+  }
+
+  const commit = async (block: HTMLElement): Promise<void> => {
+    const entry = tracked.get(block)
+    if (entry === undefined) return
+    entry.timer = null
+    if (!block.isConnected) {
+      disposeBlock(block)
+      return
+    }
+    const source = entry.source
+    if (source.length === 0) return
+    if (entry.mount !== null && entry.mountedSource === source) return
+    // 语法门禁:流式中途的半截图源静默等待(文本还会变);定稿后语法
+    // 仍失败的照常挂载,由卡片展示错误态与重试。
+    if (!(await parseable(source)) && !isTurnFinalized(block)) return
+    if (entry.mount === null || entry.root === null) {
+      block.dataset.tcmReplaced = '1'
+      block.style.display = 'none'
+      const mount = document.createElement('div')
+      mount.className = MOUNT_CLASS
+      block.parentNode?.insertBefore(mount, block.nextSibling)
+      entry.mount = mount
+      entry.root = createRoot(mount)
+    }
+    entry.mountedSource = source
+    entry.root.render(createElement(MermaidInline, { source, themeSvc, cordisCtx: ctx }))
+  }
+
+  const schedule = (block: HTMLElement, entry: Tracked): void => {
+    if (entry.timer !== null) clearTimeout(entry.timer)
+    entry.timer = setTimeout(() => {
+      void commit(block)
+    }, STABLE_MS)
+  }
+
+  const scan = (): void => {
+    // 清孤儿:产品重绘/删消息会把 block 从 DOM 摘掉。
+    for (const block of Array.from(tracked.keys())) {
+      if (!block.isConnected) disposeBlock(block)
+    }
+    for (const block of Array.from(document.querySelectorAll(`.${CODE_BLOCK_CLASS}`))) {
+      const el = block as HTMLElement
+      // banner 语言定稿后可能揭晓为非 mermaid(流式嗅探误判)→ 还原。
+      if (!detectMermaid(block)) {
+        if (tracked.has(el)) disposeBlock(el)
+        continue
+      }
+      const text = readSource(block)
+      let entry = tracked.get(el)
+      if (entry === undefined) {
+        entry = { mount: null, root: null, source: text, mountedSource: '', timer: null }
+        tracked.set(el, entry)
+        schedule(el, entry)
+        continue
+      }
+      // 挂载点被产品重放破坏(React 重绘同一块 DOM)→ 重建。
+      if (entry.mount !== null) {
+        const healthy = entry.mount.isConnected
+          && el.nextElementSibling === entry.mount
+          && el.style.display === 'none'
+          && el.dataset.tcmReplaced === '1'
+        if (!healthy) {
+          if (entry.root !== null) {
+            try {
+              entry.root.unmount()
+            } catch {
+              /* ignore */
+            }
+          }
+          entry.mount?.remove()
+          entry.mount = null
+          entry.root = null
+          entry.mountedSource = ''
+          schedule(el, entry)
+          continue
+        }
+      }
+      if (entry.source !== text) {
+        entry.source = text
+        schedule(el, entry)
+      } else if (entry.mount === null && entry.timer === null) {
+        // 上一轮被语法门禁拦下且文本未变:轮次可能已定稿(尾部行出现),
+        // 再试一次,这次 finalized 判定可能放行错误态。
+        schedule(el, entry)
+      }
+    }
+  }
+
+  let rafPending = false
+  const observer = new MutationObserver(() => {
+    if (rafPending) return
+    rafPending = true
+    requestAnimationFrame(() => {
+      rafPending = false
+      scan()
+    })
+  })
+  ctx.effect(() => {
+    scan()
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+    return () => {
+      observer.disconnect()
+      for (const block of Array.from(tracked.keys())) disposeBlock(block)
+    }
+  }, 'dsh-session-ui-enhance: mermaid observer')
+}

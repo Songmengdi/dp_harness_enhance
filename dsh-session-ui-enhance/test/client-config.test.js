@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CLIENT_DEFAULTS, clientConfigOf, sanitizeClientConfig } from '../lib/shared/client-config.js'
-import { Config as ConfigSchema } from '../lib/config.js'
+import { CLIENT_DEFAULTS, clientConfigOf, sanitizeClientConfig } from '../lib/types/shared/client-config.js'
+import { Config as ConfigSchema } from '../lib/types/config.js'
 
 /** host schema 默认值必须与客户端编译期默认值一致(防漂移守护)。 */
 test('schema 默认值 === CLIENT_DEFAULTS', () => {
@@ -23,18 +23,14 @@ test('schema 默认值 === CLIENT_DEFAULTS', () => {
   }
 })
 
-test('clientConfigOf: 只投影客户端子集且深拷贝 darkColors', () => {
+test('clientConfigOf: 只投影已知字段且深拷贝 darkColors', () => {
   const full = {
-    krokiBaseUrl: 'https://example.com',
-    krokiPath: '/mermaid/svg',
-    upstreamTimeoutMs: 1000,
-    maxBodyBytes: 2000,
-    maxDiagramBytes: 3000,
+    obsoleteKrokiField: 'https://example.com',
     ...CLIENT_DEFAULTS,
   }
   const projected = clientConfigOf(full)
   assert.deepEqual(projected, CLIENT_DEFAULTS)
-  assert.equal('krokiBaseUrl' in projected, false)
+  assert.equal('obsoleteKrokiField' in projected, false)
   projected.darkColors.shape = '#000000'
   assert.notEqual(CLIENT_DEFAULTS.darkColors.shape, '#000000')
 })

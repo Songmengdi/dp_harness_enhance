@@ -5,7 +5,10 @@
  * conversation column: hovering ramps the bar lengths around the hovered
  * turn, a hover card previews the turn's input, and clicking locates and
  * highlights the message. The same bundle contributes the tiered
- * content-width breakpoints and breathing clearance (see rail.module.css).
+ * content-width breakpoints and breathing clearance (see rail.module.css),
+ * plus a zcode-style markdown typography restyle of the conversation
+ * surface (see typography.css — type scale, weights, ink, tables, and
+ * code-block cards).
  *
  * The rail is contributed into the `conversation.session.header.utilities`
  * slot, which ui-conversation declares and owns: this plugin only registers
@@ -22,6 +25,12 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import React from 'react'
 import styles from './rail.module.css'
+import { applyCodeLangTagging } from './code-lang'
+import { applyMermaidRenderer } from './mermaid'
+// Side effect: injects the zcode-style markdown typography restyle (global,
+// non-module CSS — token overrides + table/code-block chrome) as one
+// <style data-plugin> tag that the loader removes on unload.
+import './typography.css'
 
 /** Required services: the slot registry (provided by the client runtime). */
 export const inject = ['slots']
@@ -200,11 +209,10 @@ function UserTurnRail(props: RailProps): React.ReactElement | null {
               }}
             />
             <div className={styles.card}>
-              <div className={styles.cardHead}>
-                <div className={styles.badge}>第 {index + 1} 轮</div>
-                <div className={styles.cardHeadSub}>用户输入预览</div>
+              <div className={styles.cardMeta}>
+                <span className={styles.cardTurn}>第 {index + 1} 轮</span>
+                <span className={styles.cardHint}>点击定位</span>
               </div>
-              <div className={styles.cardDivider} />
               <div className={styles.cardText}>{turn.text}</div>
             </div>
           </div>
@@ -222,6 +230,11 @@ function UserTurnRail(props: RailProps): React.ReactElement | null {
  * @param ctx - client root context carrying the slot registry.
  */
 export function apply(ctx: ClientContext): void {
+  // Mirror code-block banner language text into `data-z-lang` so
+  // typography.css can render per-language brand icons (see code-lang.ts).
+  applyCodeLangTagging(ctx)
+  // Replace ```mermaid code blocks with interactive SVG cards (see mermaid.ts).
+  applyMermaidRenderer(ctx)
   ctx.slots.inject('conversation.session.header.utilities', () => {
     const dispose = ctx.slots.register({
       name: 'conversation.session.header.utilities',

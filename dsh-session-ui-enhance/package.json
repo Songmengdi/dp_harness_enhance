@@ -1,7 +1,7 @@
 {
-  "name": "dsh-user-turn-rail",
-  "version": "1.0.1",
-  "description": "User turn rail for the dsh web GUI: a vertically centered rail of turn bars at the left edge of the conversation column (hover ramps bar lengths, hover card previews the turn input, click locates and highlights the message), plus tiered content-width breakpoints and breathing clearance.",
+  "name": "dsh-session-ui-enhance",
+  "version": "1.0.0",
+  "description": "Session UI enhancements for the dsh web GUI: a vertically centered rail of turn bars at the left edge of the conversation column (hover ramps bar lengths, hover card previews the turn input, click locates and highlights the message), plus tiered content-width breakpoints and breathing clearance.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -28,7 +28,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Songmengdi/dp_harness_enhance.git",
-    "directory": "dsh-user-turn-rail"
+    "directory": "dsh-session-ui-enhance"
   },
   "dsh": {
     "bundle": {

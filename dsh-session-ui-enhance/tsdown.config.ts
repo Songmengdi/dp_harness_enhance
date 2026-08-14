@@ -1,5 +1,5 @@
 /**
- * Build faces for dsh-user-turn-rail.
+ * Build faces for dsh-session-ui-enhance.
  *
  * Node half (lib/index.js): bundled from lib/types/index.js, the tsc output
  * of tsconfig.host.json.
@@ -14,12 +14,12 @@
  *   external: the frozen loader module table answers their require calls at
  *   runtime. Everything else inlines.
  * - CSS Modules compile through lightningcss inside the bundle; the css text
- *   auto-injects one <style data-plugin="dsh-user-turn-rail"> tag at factory
+ *   auto-injects one <style data-plugin="dsh-session-ui-enhance"> tag at factory
  *   execution, and the loader removes plugin-owned tags on unload.
  * - The purity gate mirrors the runtime edge rules: any @deepseek-ai value
  *   import outside the platform table is a build error.
  *
- * @module dsh-user-turn-rail/tsdown.config
+ * @module dsh-session-ui-enhance/tsdown.config
  */
 
 import { readFile } from 'node:fs/promises'
@@ -28,7 +28,7 @@ import { basename, dirname, resolve as resolvePath, sep } from 'node:path'
 import { transform } from 'lightningcss'
 import type { UserConfig } from 'tsdown'
 
-const ID = 'dsh-user-turn-rail'
+const ID = 'dsh-session-ui-enhance'
 
 /**
  * Browser platform modules the shell shares into the frozen module table —

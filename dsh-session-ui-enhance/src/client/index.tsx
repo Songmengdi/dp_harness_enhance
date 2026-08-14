@@ -1,5 +1,5 @@
 /**
- * dsh-user-turn-rail — client half.
+ * dsh-session-ui-enhance — client half.
  *
  * A vertically centered rail of user-turn bars at the left edge of the
  * conversation column: hovering ramps the bar lengths around the hovered
@@ -12,7 +12,7 @@
  * an entry (the four-step contract — declare / claim / inject / render —
  * never lets a contributor own a slot it did not declare).
  *
- * @module dsh-user-turn-rail/client
+ * @module dsh-session-ui-enhance/client
  */
 
 import type { ClientContext, UserMessageNode } from '@deepseek-ai/dsh-client-runtime/client'
@@ -225,7 +225,7 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('conversation.session.header.utilities', () => {
     const dispose = ctx.slots.register({
       name: 'conversation.session.header.utilities',
-      id: 'dsh-user-turn-rail',
+      id: 'dsh-session-ui-enhance',
       label: '用户轮次定位',
       order: 100,
     }, UserTurnRail)

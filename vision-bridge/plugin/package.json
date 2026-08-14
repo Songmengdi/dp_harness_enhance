@@ -1,0 +1,8 @@
+{
+  "name": "vision-hook",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "description": "纯文本模型外挂视觉：拦截 read/read_image 读图并指路 dsh-vision CLI（明眼人协议）；粘贴截图落地临时路径并注入；bash 出图自动补描述。源码唯一真源在项目 vision-bridge/plugin。"
+}

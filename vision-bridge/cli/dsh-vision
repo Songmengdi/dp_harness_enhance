@@ -1,0 +1,373 @@
+#!/usr/bin/env python3
+# dsh-vision — 视觉桥 CLI
+# 由 vision-hook 插件安装到 ~/.dsh/bin/dsh-vision；配置缓存 ~/.dsh/vision-bridge/cli.json
+import argparse
+import base64
+import io
+import json
+import os
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+CONFIG_PATH = os.path.expanduser('~/.dsh/vision-bridge/cli.json')
+
+USAGE = '''用法（通过 bash 工具执行）：
+  dsh-vision describe <图1> [图2 ...] [--question "..."] [--focus "..."] [--max-tokens N]
+      核心命令：让明眼人看图。
+      · 一张图 + 无 --question：完整独立全景描述（对象/颜色/位置/文字/布局 + 关键事实清单）
+      · 一张图 + --question：五段式回答（直接回答/实际所见/证据/信心/补充），绝不只答是/否
+      · 多张图：逐张独立描述（图1/图2…），互不参考；差异对比由你自己推理，别让 VLM 总结
+  dsh-vision pixel <图> [--mode grid|points|region|hist|edges] [--n N] [--points "x,y;x,y"] [--region "x,y,w,h"]
+      像素级颜色/亮度数据
+  dsh-vision media <文件>
+      ffprobe 元数据：时长/分辨率/帧率/编码（图片与音视频均可）
+  dsh-vision frames <视频> --times "0:05,10,1:30.5"
+      ffmpeg 抽帧（逗号分隔时间点，最多 8 个），返回帧路径，再逐帧 describe
+  dsh-vision config
+      显示当前视觉模型配置（不显示 key）
+
+指挥视觉模型的提问方法（明眼人协议）：
+  1) 第一轮不要提问，先要全景描述，再核对你的假设（你的猜测不是事实）。
+  2) 提问要具体可观测（数量/颜色名/方位+坐标/文字逐字）。
+  3) 每次提问都要求五段式回答（直接回答/实际所见/证据/信心/补充），绝不接受只答是/否。
+  4) 对关键声明追问证据；对方说不确定就要求明说，禁止编造。
+'''
+
+SYSTEM_DESCRIBE = (
+    '你是一名视觉向导，为一位完全没有视觉能力的 AI 同事描述图像。这位同事可能带着错误的预设提问，'
+    '因此你绝不能只回答它预设的问题，而必须先如实描述图像全貌。规则：'
+    '1) 先给完整、独立的全景描述：场景类型；每个主要物体的名称、颜色、形状、材质与可见文字；'
+    '物体位置（用九宫格方位加近似比例，如「画面左上角约 (10%, 25%)」）；物体之间的空间关系；整体布局与构图。'
+    '2) 图中所有可见文字必须逐字转写（包括小字、水印、按钮），并注明位置。'
+    '3) 描述尽量具体、可核对：给出数量、颜色名、近似坐标、比例。'
+    '4) 看不清或不确定处必须明说「不确定」，禁止编造。'
+    '5) 结尾输出【关键事实清单】，逐条列出图中确定的事实。'
+    '若同时给多张图片，必须逐张独立描述（标清图1、图2…），不得互相参考，不得输出对比结论。'
+    '用中文回答。'
+)
+
+SYSTEM_ASK = (
+    '你是一名视觉向导，为一位完全没有视觉能力的 AI 同事看图答疑。'
+    '这位同事可能基于完全错误的假设提问（比如指着消防栓问「这是不是水桶」）。'
+    '你的回答必须包含五个部分：1)【直接回答】明确回答它的问题；'
+    '2)【实际所见】不管它的预设是什么，先描述图中该区域实际是什么样子（物体名称、颜色、形状、位置、文字）；'
+    '3)【证据】支撑判断的具体视觉特征；4)【信心】0-10 分并说明理由；5)【补充】它可能还想知道的相邻信息。'
+    '禁止只回答「是/不是/没有」，每次回答都必须携带实际描述。'
+    '若同时给多张图片，先逐张描述（标清图1、图2…），再针对问题回答。'
+    '用中文回答。'
+)
+
+
+def load_config():
+    try:
+        with open(CONFIG_PATH, encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def ensure_config():
+    cfg = load_config()
+    if not cfg or not cfg.get('model') or not cfg.get('endpoint'):
+        print(
+            '未找到视觉模型配置。请在 Harness 设置 → 模型页配置一个声明了图片输入（input 含 image）的模型，'
+            'vision-hook 插件会自动刷新本缓存（~/.dsh/vision-bridge/cli.json）。',
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return cfg
+
+
+def to_data_url(path):
+    data = open(path, 'rb').read()
+    ext = os.path.splitext(path)[1].lower().lstrip('.')
+    mime = {
+        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+        'gif': 'image/gif', 'webp': 'image/webp', 'bmp': 'image/bmp',
+    }.get(ext)
+    if mime is None:
+        try:
+            from PIL import Image
+            im = Image.open(path).convert('RGB')
+            buf = io.BytesIO()
+            im.save(buf, format='JPEG', quality=92)
+            data = buf.getvalue()
+            mime = 'image/jpeg'
+        except Exception:
+            try:
+                out = path + '.dshconv.jpg'
+                subprocess.run(['magick', path, out], check=True, capture_output=True)
+                data = open(out, 'rb').read()
+                os.unlink(out)
+                mime = 'image/jpeg'
+            except Exception as exc:
+                print('无法读取图片 %s: %s' % (path, exc), file=sys.stderr)
+                sys.exit(1)
+    return 'data:%s;base64,%s' % (mime, base64.b64encode(data).decode())
+
+
+def http_post_json(url, payload, headers):
+    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=170) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode('utf-8', 'replace')
+        print('HTTP %s: %s' % (exc.code, body[:400]), file=sys.stderr)
+        sys.exit(3)
+    except Exception as exc:
+        print('网络错误: %s' % exc, file=sys.stderr)
+        sys.exit(3)
+
+
+def build_user_text(paths, question, focus):
+    n = len(paths)
+    parts = []
+    if question:
+        parts.append('问题：' + question)
+        parts.append('共 %d 张图片，按顺序编号为 图1 ~ 图%d。' % (n, n))
+    elif n > 1:
+        parts.append('请逐一独立描述以下 %d 张图片（图1 ~ 图%d）。' % (n, n))
+    else:
+        parts.append('请完整描述这张图片。')
+    if focus:
+        parts.append('重点：' + focus)
+    return '\n'.join(parts)
+
+
+def cmd_describe(args):
+    cfg = ensure_config()
+    paths = args.paths
+    if len(paths) > 10:
+        print('一次最多 10 张图，请分批调用。', file=sys.stderr)
+        sys.exit(2)
+    system = SYSTEM_ASK if args.question else SYSTEM_DESCRIBE
+    user = build_user_text(paths, args.question, args.focus)
+    max_tokens = args.max_tokens or 1600
+    protocol = args.protocol or cfg.get('protocol') or 'openai-completions'
+    if protocol == 'anthropic-messages':
+        content = [{'type': 'text', 'text': user}]
+        for p in paths:
+            head, b64 = to_data_url(p).split(',', 1)
+            content.append({
+                'type': 'image',
+                'source': {'type': 'base64', 'media_type': head[5:], 'data': b64},
+            })
+        body = {
+            'model': cfg['model'], 'max_tokens': max_tokens, 'temperature': 0.2,
+            'system': system,
+            'messages': [{'role': 'user', 'content': content}],
+        }
+        headers = {
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01',
+        }
+        if cfg.get('apiKey'):
+            headers['x-api-key'] = cfg['apiKey']
+        resp = http_post_json(cfg['endpoint'].rstrip('/') + '/v1/messages', body, headers)
+        texts = [b.get('text', '') for b in resp.get('content', []) if b.get('type') == 'text']
+        print(''.join(texts))
+    else:
+        content = [{'type': 'text', 'text': user}]
+        for p in paths:
+            content.append({'type': 'image_url', 'image_url': {'url': to_data_url(p)}})
+        body = {
+            'model': cfg['model'], 'max_tokens': max_tokens, 'temperature': 0.2,
+            'messages': [
+                {'role': 'system', 'content': system},
+                {'role': 'user', 'content': content},
+            ],
+        }
+        headers = {'Content-Type': 'application/json'}
+        if cfg.get('apiKey'):
+            headers['Authorization'] = 'Bearer ' + cfg['apiKey']
+        resp = http_post_json(cfg['endpoint'].rstrip('/') + '/chat/completions', body, headers)
+        print(resp['choices'][0]['message']['content'])
+
+
+def cmd_pixel(args):
+    spec = {'mode': args.mode or 'grid', 'n': args.n or 8}
+    if args.points:
+        spec['points'] = [[int(v) for v in pt.split(',')] for pt in args.points.split(';')]
+    if args.region:
+        spec['region'] = [int(v) for v in args.region.split(',')]
+    env = dict(os.environ)
+    env['P_PATH'] = args.path
+    env['P_SPEC'] = json.dumps(spec)
+    script = r'''
+import os, json
+from PIL import Image, ImageFilter, ImageStat
+path = os.environ['P_PATH']
+spec = json.loads(os.environ['P_SPEC'])
+im = Image.open(path).convert('RGB')
+W, H = im.size
+out = {'width': W, 'height': H, 'mode': spec.get('mode', 'grid')}
+mode = out['mode']
+def quantize_counts(box, colors):
+    try:
+        q = box.quantize(colors=colors, method=Image.MEDIANCUT).convert('RGB')
+        counts = q.getcolors(maxcolors=100000)
+        if not counts:
+            return []
+        counts.sort(reverse=True)
+        return counts
+    except Exception:
+        return []
+if mode == 'points':
+    px = im.load()
+    out['points'] = [
+        {'x': x, 'y': y, 'rgb': list(px[x, y]), 'hex': '#%02x%02x%02x' % px[x, y]}
+        for x, y in spec.get('points', []) if 0 <= x < W and 0 <= y < H
+    ]
+elif mode == 'region':
+    x, y, w, h = spec.get('region', [0, 0, W, H])
+    box = im.crop((x, y, min(x + w, W), min(y + h, H)))
+    st = ImageStat.Stat(box)
+    total = box.size[0] * box.size[1]
+    dom = [{'rgb': list(c), 'hex': '#%02x%02x%02x' % c, 'pct': round(n * 100.0 / total, 1)}
+           for n, c in quantize_counts(box, 5)[:5]]
+    out['region'] = {'x': x, 'y': y, 'w': box.size[0], 'h': box.size[1],
+                     'mean_rgb': [round(v) for v in st.mean], 'extrema_rgb': st.extrema, 'dominant': dom}
+elif mode == 'grid':
+    n = int(spec.get('n', 8))
+    small = im.resize((n, n))
+    sp = small.load()
+    out['grid'] = [['#%02x%02x%02x' % sp[gx, gy] for gx in range(n)] for gy in range(n)]
+    g = im.convert('L').resize((n * 2, n))
+    gp = g.load()
+    chars = ' .:-=+*#%@'
+    out['ascii'] = [''.join(chars[min(9, gp[gx, gy] * 10 // 256)] for gx in range(n * 2)) for gy in range(n)]
+elif mode == 'edges':
+    e = im.convert('L').filter(ImageFilter.FIND_EDGES)
+    st = ImageStat.Stat(e)
+    hist = e.histogram()
+    out['edge_mean'] = round(st.mean[0], 1)
+    out['edge_pixel_pct'] = round(sum(hist[64:]) * 100.0 / (W * H), 1)
+elif mode == 'hist':
+    total = W * H
+    out['dominant'] = [{'rgb': list(c), 'hex': '#%02x%02x%02x' % c, 'pct': round(n * 100.0 / total, 1)}
+                       for n, c in quantize_counts(im, 8)[:8]]
+else:
+    out['error'] = 'unknown mode: ' + mode
+print(json.dumps(out))
+'''
+    try:
+        r = subprocess.run(['python3', '-c', script], env=env, capture_output=True, text=True, timeout=60)
+    except Exception as exc:
+        print('像素检查执行失败: %s' % exc, file=sys.stderr)
+        sys.exit(4)
+    if r.returncode != 0:
+        print('像素检查失败: %s' % r.stderr[-400:], file=sys.stderr)
+        sys.exit(4)
+    print(r.stdout.strip())
+
+
+def cmd_media(args):
+    try:
+        r = subprocess.run(
+            ['ffprobe', '-v', 'quiet', '-print_format', 'json',
+             '-show_format', '-show_streams', args.path],
+            capture_output=True, text=True, timeout=30,
+        )
+    except FileNotFoundError:
+        print('需要 ffmpeg/ffprobe。', file=sys.stderr)
+        sys.exit(6)
+    if r.returncode != 0:
+        print('ffprobe 失败: %s' % r.stderr[-300:], file=sys.stderr)
+        sys.exit(6)
+    data = json.loads(r.stdout)
+    fmt = data.get('format', {})
+    streams = []
+    for s in data.get('streams', []):
+        streams.append({
+            'type': s.get('codec_type'), 'codec': s.get('codec_name'),
+            'width': s.get('width'), 'height': s.get('height'),
+            'fps': s.get('avg_frame_rate') or s.get('r_frame_rate'),
+            'sampleRate': s.get('sample_rate'), 'channels': s.get('channels'),
+            'pixFmt': s.get('pix_fmt'), 'duration': s.get('duration'),
+        })
+    print(json.dumps({
+        'path': args.path,
+        'durationSeconds': fmt.get('duration'),
+        'sizeBytes': fmt.get('size'),
+        'bitRate': fmt.get('bit_rate'),
+        'formatName': fmt.get('format_name'),
+        'streams': streams,
+    }, ensure_ascii=False))
+
+
+def cmd_frames(args):
+    times = [t.strip() for t in (args.times or '').split(',') if t.strip()]
+    if not times:
+        print('--times 不能为空，如 --times "0:05,10,1:30.5"', file=sys.stderr)
+        sys.exit(2)
+    if len(times) > 8:
+        print('一次最多抽 8 帧。', file=sys.stderr)
+        sys.exit(2)
+    import re
+    out_dir = re.sub(r'\.\w+$', '', args.path) + '__frames'
+    os.makedirs(out_dir, exist_ok=True)
+    frames = []
+    for i, t in enumerate(times):
+        safe = re.sub(r'[^0-9A-Za-z:.]', '_', t)
+        out = os.path.join(out_dir, 'frame_%02d_%s.png' % (i + 1, safe))
+        r = subprocess.run(
+            ['ffmpeg', '-y', '-ss', t, '-i', args.path, '-frames:v', '1', '-q:v', '2', out],
+            capture_output=True, text=True, timeout=120,
+        )
+        if r.returncode != 0:
+            print('抽帧失败 (t=%s): %s' % (t, r.stderr[-300:]), file=sys.stderr)
+            sys.exit(7)
+        frames.append({'time': t, 'path': out})
+    print(json.dumps({'dir': out_dir, 'frames': frames}, ensure_ascii=False))
+
+
+def cmd_config(args):
+    cfg = load_config()
+    if not cfg:
+        print('未找到配置缓存：%s' % CONFIG_PATH)
+        sys.exit(2)
+    shown = {k: v for k, v in cfg.items() if k != 'apiKey'}
+    print(json.dumps(shown, ensure_ascii=False, indent=2))
+
+
+def main():
+    parser = argparse.ArgumentParser(prog='dsh-vision', add_help=False)
+    sub = parser.add_subparsers(dest='command')
+    p_desc = sub.add_parser('describe', add_help=False)
+    p_desc.add_argument('paths', nargs='+')
+    p_desc.add_argument('--question')
+    p_desc.add_argument('--focus')
+    p_desc.add_argument('--max-tokens', type=int)
+    p_desc.add_argument('--protocol', choices=['openai-completions', 'anthropic-messages'])
+    p_pix = sub.add_parser('pixel', add_help=False)
+    p_pix.add_argument('path')
+    p_pix.add_argument('--mode', choices=['grid', 'points', 'region', 'hist', 'edges'])
+    p_pix.add_argument('--n', type=int)
+    p_pix.add_argument('--points')
+    p_pix.add_argument('--region')
+    p_med = sub.add_parser('media', add_help=False)
+    p_med.add_argument('path')
+    p_frm = sub.add_parser('frames', add_help=False)
+    p_frm.add_argument('path')
+    p_frm.add_argument('--times')
+    sub.add_parser('config', add_help=False)
+    args = parser.parse_args()
+    if args.command == 'describe':
+        cmd_describe(args)
+    elif args.command == 'pixel':
+        cmd_pixel(args)
+    elif args.command == 'media':
+        cmd_media(args)
+    elif args.command == 'frames':
+        cmd_frames(args)
+    elif args.command == 'config':
+        cmd_config(args)
+    else:
+        print(USAGE)
+
+
+if __name__ == '__main__':
+    main()

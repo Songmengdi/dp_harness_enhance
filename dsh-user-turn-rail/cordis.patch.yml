@@ -1,0 +1,11 @@
+# dsh-user-turn-rail bundle patch: mounts the composition row that activates
+# the user turn rail in the web GUI. Applied when a profile lists this bundle
+# in dsh.profile.bundles; a profile's own cordis.patch.yml may override this
+# row by id (patch replaces the targeted row's whole config).
+#
+# The host half of the row is a deliberate no-op — the capability is pure
+# browser UI; the row is what lets the host Loader mount the package and lets
+# client-modules serve the `./client` bundle declared by `dsh.client`.
+- insert:
+    - id: user-turn-rail
+      name: dsh-user-turn-rail

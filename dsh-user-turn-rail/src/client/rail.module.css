@@ -1,0 +1,127 @@
+.rail {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 6px 12px 6px 2px;
+  margin: -6px 0;
+}
+
+.line {
+  height: 3px;
+  border-radius: 999px;
+  transition: width 0.24s cubic-bezier(0.22, 0.8, 0.36, 1), background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.card {
+  position: absolute;
+  left: calc(100% + 14px);
+  top: 50%;
+  transform: translateY(-50%) translateX(-5px) scale(0.97);
+  transform-origin: left center;
+  opacity: 0;
+  pointer-events: none;
+  min-width: 244px;
+  max-width: 324px;
+  background: var(--dsw-alias-bg-overlay, #202123);
+  border: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.row:hover .card {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0) scale(1);
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+  width: 9px;
+  height: 9px;
+  background: var(--dsw-alias-bg-overlay, #202123);
+  border-left: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--dsw-alias-label-primary, #eeeeee);
+  background: rgba(128, 128, 128, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.cardHeadSub {
+  font-size: 11px;
+  letter-spacing: 0.3px;
+  color: var(--dsw-alias-label-secondary, #999999);
+}
+
+.cardDivider {
+  height: 1px;
+  margin-bottom: 8px;
+  background: linear-gradient(90deg, var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.12)), rgba(255, 255, 255, 0));
+}
+
+.cardText {
+  font-size: 12.5px;
+  line-height: 1.62;
+  color: var(--dsw-alias-label-primary, #eeeeee);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 128px;
+  overflow: hidden;
+}
+
+/*
+ * Content width architecture:
+ * 1) --dsh-chat-content-width: fixed pixel tiers by viewport breakpoint
+ *    (no percentages — the two consumers, chat column and composer card,
+ *    resolve percentages against different containing blocks and would
+ *    misalign).
+ * 2) Breathing room comes from --dsh-composer-side-clearance: the chat
+ *    flow gets clearance + 16px per side, the composer gets clearance per
+ *    side — the shipped alignment relation is preserved. When the middle
+ *    column narrows, content shrinks automatically and the side clearance
+ *    stays constant.
+ */
+[data-phase] {
+  --dsh-chat-content-width: 748px;
+}
+
+[data-phase='active'] {
+  --dsh-composer-side-clearance: 65px;
+}
+
+@media (min-width: 1920px) { [data-phase] { --dsh-chat-content-width: 1080px; } }
+@media (min-width: 2304px) { [data-phase] { --dsh-chat-content-width: 1240px; } }
+@media (min-width: 2688px) { [data-phase] { --dsh-chat-content-width: 1420px; } }
+@media (min-width: 3072px) { [data-phase] { --dsh-chat-content-width: 1600px; } }
+@media (min-width: 3456px) { [data-phase] { --dsh-chat-content-width: 1800px; } }

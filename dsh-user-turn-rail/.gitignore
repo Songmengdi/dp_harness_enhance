@@ -1,0 +1,4 @@
+# build outputs and local pack artifacts
+lib/
+*.tgz
+*.log

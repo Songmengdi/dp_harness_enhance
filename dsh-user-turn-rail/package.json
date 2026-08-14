@@ -4,17 +4,66 @@
   "description": "User turn rail for the dsh web GUI: a vertically centered rail of turn bars at the left edge of the conversation column (hover ramps bar lengths, hover card previews the turn input, click locates and highlights the message), plus tiered content-width breakpoints and breathing clearance.",
   "type": "module",
   "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
   "exports": {
-    ".": { "default": "./lib/index.js" },
-    "./client": { "default": "./lib/client.js" },
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
     "./package.json": "./package.json"
   },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "lib/client.js.map",
+    "lib/types/**/*.d.ts",
+    "cordis.patch.yml",
+    "README.md"
+  ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Songmengdi/dp_harness_enhance.git",
+    "directory": "dsh-user-turn-rail"
+  },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
-      "inject": [],
-      "immediately": true
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
     }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.6",
+    "@types/react": "~18.3.1",
+    "lightningcss": "^1.32.0",
+    "react": "^18.2.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "build": "tsc -p tsconfig.host.json && tsc -p tsconfig.client.json && tsdown",
+    "prepare": "npm run build",
+    "pack": "pnpm pack"
   }
 }

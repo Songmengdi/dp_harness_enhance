@@ -2,7 +2,7 @@
 name: dsh-capability-development
 description: 指导如何为 DeepSeek Harness (dsh) 添加更强大的功能——开发新插件、新工具、Host/Client 能力、UI 扩展(slot/会话节点/浮层)、HTTP、持久化,或打包发布插件。Use when 用户想"给 dsh 加功能/扩展 dsh/写插件/开发工具/加 UI 入口"、提到 cordis 插件开发、dsh plugin add、slot、插件打包发布,或在本仓库的 dsh 插件项目里动手改代码时——即使没明说"插件"两个字。
 metadata:
-  version: "2.3.0"
+  version: "2.4.0"
   date: "2026-08-14"
   reference: "官方文档中文快照(本 skill references/) + 社区经验吸收自 https://github.com/NanmiCoder/dsh-agent-teams"
 ---
@@ -58,6 +58,7 @@ metadata:
 | 简单持久化 backend | `packages/storage/storage-json` |
 | 工具插件 | `packages/fs/tool-fs` |
 | 崩溃安全日志 | `packages/session/session-persistence-jsonl` |
+| client tsdown 预设 | `packages/client/tsdown.client.ts`(独立包可整体移植,见"构建与类型隔离") |
 
 路径漂移时用 `packages/README.md` 重新定位,不要凭旧文档猜。
 
@@ -83,6 +84,11 @@ metadata:
    - DSH/Cordis/React 等共享运行时声明 peer,避免复制 runtime identity
    - patch 按 `id` 覆盖,目标行 `config` 是**整段替换**不是深合并;生效顺序 profile bundles → profile patch → `$DSH_HOME/cordis.patch.yml` → 命令行 `--patch`,后者胜
    - 分发三条路:npm 发布 / GitHub 安装(需自包含 `prepare` 构建 + 用户 `allowBuilds`,建议 pin commit)/ tarball;用户侧 `dsh plugin --profile xxx add <你的包>`
+    - **安装/分发的实战坑(全部实测过)**:
+      - **GitHub 安装语法(monorepo 子目录)**:用 `github:owner/repo#<sha>&path:<subdir>`;`github:owner/repo/subdir#sha` 的 slash 形式会把 subdir 当仓库名的一部分,报 "repository exists" 权限错误。构建授权:pnpm 10 打印 `onlyBuiltDependencies`(列表)、旧版 `allowBuilds`(map),两个键都写进 profile 的 `pnpm-workspace.yaml` 最稳
+      - **pnpm 9.x 首装坑**:dsh 初始化的 profile workspace(`packages: ['.']`)会让 `dsh plugin add` 报 `ERR_PNPM_ADDING_TO_ROOT`;修法:`add` 后加 `-w`,或 profile 目录写 `.npmrc`(`ignore-workspace-root-check=true`)。pnpm ≥10 无此问题——README 安装命令必须经"全新 profile + 本机 pnpm 版本"实测才写
+      - **tarball URL 缓存陷阱**:`gh release upload --clobber` 替换资产后 CDN 仍发旧货;且 pnpm store 按 URL 缓存 tarball,`remove`+`add` 也复用旧内容。修法:换新 URL(文件名带版本号),或删 `$(pnpm store path)` 下对应的 `https+++...` 目录再 add。发布后必须比对 安装物/发布物 哈希一致
+      - **@deepseek-ai 依赖版本漂移**:npm `latest` dist-tag 是 0.0.1-rc.1 旧版,运行时的 0.1.0-rc.6 挂在 `next`;devDeps/peers 显式 pin 运行时同版本,别写 `latest` 或信默认解析
 
 最小骨架(完整解释见文档):
 
@@ -123,19 +129,25 @@ export function apply(ctx: Context) {
 - host/client 用**两个 tsc program**(如 `tsconfig.host.json`/`tsconfig.client.json`),避免 host 会话与浏览器 runtime 的 Context declaration merge 冲突
 - client bundle 复用正式版 client tsdown helper 或已验证模板,不手写 loader 协议;产物 host/client 并存、保 sourcemap、CSS Modules 注入
 - **client import 纯度**:值 import 只允许平台模块表与官方豁免;跨包只 type-only import;协作必须走 Cordis service/slot——否则纯度门或运行时 require 失败
+- **tsdown 0.22 新 API**:`external`/`noExternal` 已废弃(能用但告警),改 `deps.neverBundle`(平台模块数组)+ `deps.alwaysBundle`(函数:表内返回 undefined,其余一律 true 内联);移植官方 `tsdown.client.ts` 预设时替换这两处即零警告,行为不变
+- **client 类型链**:devDeps pin 运行时版本后,`import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'` 拉 SlotMap merge,`PropsRuntime<'slot.name'>` 直接当组件 props 类型;list 条目 register options 的合法字段是 `name`/`id`/`order`/`label`(`label` 是官方字段,可放心用)
 - **HMR 边界**:只有 bundle 内容变化可 client HMR;manifest、exports、插件集合、profile、host 代码变化要重启;不启动独立 Vite server 替代 DSH GUI
 
 ## 验证矩阵
 
 - **基线**:先读 `package.json.scripts` 再跑(`typecheck`/`build`/`test`/`verify`);至少覆盖纯业务规则、文件往返/锁/归档恢复、投影折叠纯函数
 - **真实组合**:不只手搓 `ctx.plugin()`;`dsh plugin --profile <scratch> add <pkg>` → `dsh --profile <scratch> --dump-config` 断言 bundle 层、行 id、name、config、注入顺序;坏 patch 时 `--dump-default-config` 恢复诊断
-- **真实任务**:`dsh --profile headless "一个小而可判定的任务"`(不要发明 `dsh run` 子命令)
+- **真实任务**:在**真实 `DSH_HOME`**(有模型设置)下建独立 base 系 profile 跑 `dsh --profile <p> "一个小而可判定的任务"`(不要发明 `dsh run` 子命令)。注意:`dsh web` 是 `--profile web` 的别名,不接受 `--profile`;web profile 是 server-shaped,`dsh --profile web "task"` 报 too many arguments。全新 DSH_HOME 缺模型/权限配置导致任务失败(如 "tool call aborted")不是插件问题,勿死磕任务验证——以 dump-config + GUI 启动为准
 - **从零安装**:全新临时 `DSH_HOME`/profile → 按 README 精确命令安装 → 断言 dependencies、`dsh.profile.bundles`、产物、`--dump-config` 出现插件层 → 启动验证;私有仓库用 `git+file://` 验证"Git 获取的内容"而非当前 checkout
+  - scratch GUI 验证时 profile 必须命名为 `web`(见上);断言 boot manifest 出现插件条目(`curl -s <host>/` 里 grep 插件 id)、`/plugins/<id>/client.js` 返回 200 且是标准 `__ModuleLoader__.load` 产物
+  - **字节一致性**:boot manifest 的 `rev` = bundle 内容 sha1 前 12 hex(`shasum lib/client.js | cut -c1-12`);比对 served / installed / release 三方字节,防 CDN 与 pnpm store 缓存发旧货
+  - client-modules 会动态重算 boot graph(profile 内包文件变化后 rev 自动更新,刷新页面即可);manifest、exports、插件集合变化仍要重启服务
+- **存量迁移**:从旧形态(link:/手工 patch 行)迁到标准形态:先 `dsh plugin remove` 旧依赖、删 profile `cordis.patch.yml` 的手工行(残留会 duplicate loader entry id),再 `add` 新包;迁移前备份 profile 目录
 - README 只给经过全新 profile 验证的推荐命令
 
 ## 本项目上下文
 
-- 本仓库是 dsh plugin **多项目仓库,仓库间彼此独立**(见 `Agents.md`):`vision-bridge`、`dsh-user-turn-rail` 是现有插件;改哪个先读哪个自己的 README
+- 本仓库是 dsh plugin **多项目仓库,仓库间彼此独立**(见 `Agents.md`):`vision-bridge`、`dsh-user-turn-rail`、`dsh-mermaid-renderer` 是现有插件;改哪个先读哪个自己的 README
 - 官方文档中文快照在本 skill `references/deepseek-harness/`(入口 `references/deepseek-harness/README.md`);更新:运行本 skill 的 `scripts/sync-dsh-docs.sh`
 - 快照里指向 `packages/`、`apps/`、`.agents/` 的链接属于上游仓库,本地不可达,回 GitHub 同路径看
 - 本会话运行时另有"动态 Cordis 插件"(cordis_define/cordis_run)机制,是**进程内临时扩展**,与仓库内正式插件开发是两条链路;正式交付一律走本文档流程
@@ -147,6 +159,6 @@ export function apply(ctx: Context) {
 - [ ] 可调参数全部做成 Config schema 字段,无硬编码
 - [ ] 工具 description 含前置条件/失败语义/副作用;异步观察 `exec.signal`
 - [ ] Client 面 slot 契约四步完整;Conversation Node 可确定性重放
-- [ ] typecheck、build、真实组合(`--dump-config` + headless 任务)、从零安装验证通过
+- [ ] typecheck、build、真实组合(`--dump-config` + 有 settings 的 base 系 profile 跑任务)、从零安装验证通过
 - [ ] README 安装命令与实际分发形态一致
 - [ ] 未执行未经授权的 commit/push/publish

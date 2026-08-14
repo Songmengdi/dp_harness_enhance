@@ -2,7 +2,7 @@
 name: dsh-capability-development
 description: 指导如何为 DeepSeek Harness (dsh) 添加更强大的功能——开发新插件、新工具、Host/Client 能力、UI 扩展(slot/会话节点/浮层)、HTTP、持久化,或打包发布插件。Use when 用户想"给 dsh 加功能/扩展 dsh/写插件/开发工具/加 UI 入口"、提到 cordis 插件开发、dsh plugin add、slot、插件打包发布,或在本仓库的 dsh 插件项目里动手改代码时——即使没明说"插件"两个字。
 metadata:
-  version: "2.4.0"
+  version: "2.5.0"
   date: "2026-08-14"
   reference: "官方文档中文快照(本 skill references/) + 社区经验吸收自 https://github.com/NanmiCoder/dsh-agent-teams"
 ---
@@ -132,6 +132,30 @@ export function apply(ctx: Context) {
 - **tsdown 0.22 新 API**:`external`/`noExternal` 已废弃(能用但告警),改 `deps.neverBundle`(平台模块数组)+ `deps.alwaysBundle`(函数:表内返回 undefined,其余一律 true 内联);移植官方 `tsdown.client.ts` 预设时替换这两处即零警告,行为不变
 - **client 类型链**:devDeps pin 运行时版本后,`import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'` 拉 SlotMap merge,`PropsRuntime<'slot.name'>` 直接当组件 props 类型;list 条目 register options 的合法字段是 `name`/`id`/`order`/`label`(`label` 是官方字段,可放心用)
 - **HMR 边界**:只有 bundle 内容变化可 client HMR;manifest、exports、插件集合、profile、host 代码变化要重启;不启动独立 Vite server 替代 DSH GUI
+- **流式臂抹语言**:产品流式渲染臂给 CodeBlock 传 `lang: void 0`(见 `dsh-client-ui-primitives` renderCode),banner 语言名、语言相关副作用都要等消息定稿才出现;需要"流式期间就认出代码块语言"的插件(如 mermaid 即时渲染)不能依赖 banner 文本,应做内容嗅探 + 自身语法门禁,并在定稿后按真实语言校正误判
+
+## 开发热回路(免重启迭代)
+
+已装进 profile 的正式插件,按改动面分三档,验证成本递减:
+
+| 改动面 | 生效方式 |
+|---|---|
+| client bundle 内容(`.tsx`/`.css`/client 逻辑) | `build` → 拷进 profile → **刷新页面即可**(client-modules 按文件内容重算 rev,无需重启) |
+| host 代码(route/config/host 逻辑) | 同上拷贝后**必须重启** `dsh web`(host 在进程内,不会热载) |
+| 插件集合、manifest、exports、profile 依赖 | 改 profile + 重装 + **重启** |
+
+把拷贝固化成脚本(以 `dsh-session-ui-enhance` 为样例,`<p>`/`<pkg>` 按实际替换,不写死本机绝对路径):
+
+```json
+{
+  "scripts": {
+    "sync:profile": "cp lib/client.js lib/client.js.map lib/index.js \"$HOME/.dsh/profiles/<p>/node_modules/<pkg>/lib/\"",
+    "dev": "npm run build && npm run sync:profile"
+  }
+}
+```
+
+每圈的验证门禁(防"改了没生效"的假象):三方哈希一致——`shasum lib/client.js | cut -c1-12`(built)== profile 安装物 == `curl -s <host>/plugins/<pkg>/client.js | shasum`(served)。served 不变说明拷贝没到位或服务端读的是别的路径,先查这个再怀疑代码。
 
 ## 验证矩阵
 
@@ -147,7 +171,7 @@ export function apply(ctx: Context) {
 
 ## 本项目上下文
 
-- 本仓库是 dsh plugin **多项目仓库,仓库间彼此独立**(见 `Agents.md`):`vision-bridge`、`dsh-user-turn-rail`、`dsh-mermaid-renderer` 是现有插件;改哪个先读哪个自己的 README
+- 本仓库是 dsh plugin **多项目仓库,仓库间彼此独立**(见 `Agents.md`):`vision-bridge`、`dsh-session-ui-enhance`(会话 UI:导轨/排版/代码块卡片/本地 mermaid 渲染)是现有插件;改哪个先读哪个自己的 README
 - 官方文档中文快照在本 skill `references/deepseek-harness/`(入口 `references/deepseek-harness/README.md`);更新:运行本 skill 的 `scripts/sync-dsh-docs.sh`
 - 快照里指向 `packages/`、`apps/`、`.agents/` 的链接属于上游仓库,本地不可达,回 GitHub 同路径看
 - 本会话运行时另有"动态 Cordis 插件"(cordis_define/cordis_run)机制,是**进程内临时扩展**,与仓库内正式插件开发是两条链路;正式交付一律走本文档流程

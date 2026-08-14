@@ -34,14 +34,16 @@ dsh --profile <name>
 git 安装拉取的是源码,本包自带自包含的 `prepare` 构建(tsc + tsdown,不需要 monorepo 环境);pnpm ≥10 需要显式允许构建。**务必锁定 commit**,防止后续推送改变实际运行内容:
 
 ```sh
-dsh plugin --profile <name> add github:Songmengdi/dp_harness_enhance/dsh-user-turn-rail#<commit-sha>
+dsh plugin --profile <name> add 'github:Songmengdi/dp_harness_enhance#<commit-sha>&path:dsh-user-turn-rail'
 ```
 
-首次 `add` 会因构建未授权失败,按提示把 pnpm 打印的包键写入该 profile 的 `pnpm-workspace.yaml`:
+首次 `add` 会因构建未授权失败,按提示把 pnpm 打印的包键写入该 profile 的 `pnpm-workspace.yaml`(pnpm 10 用 `onlyBuiltDependencies`,旧版用 `allowBuilds`,两种都写最稳妥):
 
 ```yaml
 allowBuilds:
   dsh-user-turn-rail: true
+onlyBuiltDependencies:
+  - dsh-user-turn-rail
 ```
 
 然后重新执行 `add`。请如实看待这项授权:它允许本包代码在安装时于你的机器上执行,只对可信源码授权。

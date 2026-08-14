@@ -7,7 +7,7 @@
  * shared/client-config.ts,由单测断言两者默认值一致(防漂移)。
  */
 import Schema from '@deepseek-ai/schemastery'
-import { CLIENT_DEFAULTS, clientConfigOf, type ClientConfig, type DarkColors } from './shared/client-config.js'
+import { CLIENT_DEFAULTS, clientConfigOf, type ClientConfig, type DarkColors, type ProcessCollapseConfig, type ThinkCollapseConfig } from './shared/client-config.js'
 
 export interface Config {
   /** 适配模式最大展示高度(px) */
@@ -24,6 +24,10 @@ export interface Config {
   themeAuto: boolean
   /** 深色重着色调色板 */
   darkColors: DarkColors
+  /** 思考块底部收起(展开的高 Think 块底部提供「收起」小字按钮) */
+  thinkCollapse: ThinkCollapseConfig
+  /** 轮次过程折叠(定稿后中间过程收成「过程细节」一行,zcode 式) */
+  processCollapse: ProcessCollapseConfig
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -41,7 +45,15 @@ export const Config: Schema<Config> = Schema.object({
     text: Schema.string().default(CLIENT_DEFAULTS.darkColors.text),
     canvas: Schema.string().default(CLIENT_DEFAULTS.darkColors.canvas),
   }),
+  thinkCollapse: Schema.object({
+    enabled: Schema.boolean().default(CLIENT_DEFAULTS.thinkCollapse.enabled),
+    minBodyHeight: Schema.number().min(160).max(1200).default(CLIENT_DEFAULTS.thinkCollapse.minBodyHeight),
+  }),
+  processCollapse: Schema.object({
+    enabled: Schema.boolean().default(CLIENT_DEFAULTS.processCollapse.enabled),
+    bottomToggleMinHeight: Schema.number().min(160).max(4000).default(CLIENT_DEFAULTS.processCollapse.bottomToggleMinHeight),
+  }),
 })
 
 export { CLIENT_DEFAULTS, clientConfigOf }
-export type { ClientConfig, DarkColors }
+export type { ClientConfig, DarkColors, ThinkCollapseConfig, ProcessCollapseConfig }

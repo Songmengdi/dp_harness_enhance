@@ -1,0 +1,89 @@
+/**
+ * dsh-session-ui-enhance — 轮次过程折叠的样式(global, non-module)。
+ *
+ * 三件套:
+ * - `[data-z-process][data-z-collapsed]` 的 display:none 承担全部显隐
+ *   (JS 只写属性,不碰 inline style,撤销标记即还原);
+ * - `.z-process-toggle` 是注入的折叠行:小字、三级墨色、整行可点,hover
+ *   垫产品同款底色;chevron 用产品同款 0.12s 旋转(尊重 reduced-motion);
+ * - `.z-process-collapse` 是过程区底部的「收起过程」行,同一配方。
+ *   亮暗主题全部走 `--dsw-alias-*` token,不写死颜色。
+ */
+
+[data-z-process][data-z-collapsed] {
+  display: none;
+}
+
+.z-process-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* 负 margin 抵消自身横向 padding,文字与正文列左边线齐平。 */
+  padding: 4px 6px;
+  margin: 0 0 0 -6px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.z-process-toggle:hover {
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.z-process-toggle:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
+}
+
+.z-process-toggle svg {
+  flex: none;
+  transition: transform 0.12s;
+}
+
+.z-process-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.z-process-count {
+  color: var(--dsw-alias-label-caption);
+}
+
+/* 过程区底部的「收起过程」行:与折叠行同一安静配方(整行可点、hover
+   垫产品同款底色),仅上方间距不同;chevron 固定朝上,不旋转。 */
+.z-process-collapse {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  margin: 2px 0 0 -6px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.z-process-collapse:hover {
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.z-process-collapse:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
+}
+
+.z-process-collapse svg {
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .z-process-toggle svg {
+    transition: none;
+  }
+}

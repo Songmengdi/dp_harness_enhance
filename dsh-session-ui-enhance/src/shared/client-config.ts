@@ -22,6 +22,14 @@ export interface DarkColors {
   canvas: string
 }
 
+/** 思考块底部收起的可调参数。 */
+export interface ThinkCollapseConfig {
+  /** 展开的高思考块底部是否提供「收起」小字按钮 */
+  enabled: boolean
+  /** 思考正文高度达到该值(px)才显示底部收起 */
+  minBodyHeight: number
+}
+
 /** 下发给浏览器的渲染配置(host Config 的客户端可见子集)。 */
 export interface ClientConfig {
   /** 适配模式的最大展示高度(px) */
@@ -38,6 +46,24 @@ export interface ClientConfig {
   themeAuto: boolean
   /** 深色重着色调色板 */
   darkColors: DarkColors
+  /** 思考块底部收起 */
+  thinkCollapse: ThinkCollapseConfig
+  /** 轮次过程折叠(zcode 式) */
+  processCollapse: ProcessCollapseConfig
+}
+
+/** 轮次过程折叠的可调参数。 */
+export interface ProcessCollapseConfig {
+  /** 轮次定稿后把中间过程(思考/工具调用等)折叠为「过程细节」行 */
+  enabled: boolean
+  /** 展开的过程区总高度达到该值(px)才在底部提供「收起过程」行 */
+  bottomToggleMinHeight: number
+}
+
+/** 轮次过程折叠的可调参数。 */
+export interface ProcessCollapseConfig {
+  /** 轮次定稿后把中间过程(思考/工具调用等)折叠为「过程细节」行 */
+  enabled: boolean
 }
 
 /**
@@ -59,6 +85,14 @@ export const CLIENT_DEFAULTS: ClientConfig = {
     text: '#e6edf3',
     canvas: '#0d1117',
   },
+  thinkCollapse: {
+    enabled: true,
+    minBodyHeight: 320,
+  },
+  processCollapse: {
+    enabled: true,
+    bottomToggleMinHeight: 480,
+  },
 }
 
 /** 从完整 host 配置投影出客户端子集(host 的 client-config 端点使用)。 */
@@ -71,6 +105,8 @@ export function clientConfigOf(config: ClientConfig): ClientConfig {
     renderTimeoutMs: config.renderTimeoutMs,
     themeAuto: config.themeAuto,
     darkColors: { ...config.darkColors },
+    thinkCollapse: { ...config.thinkCollapse },
+    processCollapse: { ...config.processCollapse },
   }
 }
 
@@ -90,6 +126,12 @@ export function sanitizeClientConfig(data: unknown): ClientConfig {
   const dc = src.darkColors !== null && typeof src.darkColors === 'object'
     ? src.darkColors as Record<string, unknown>
     : {}
+  const tc = src.thinkCollapse !== null && typeof src.thinkCollapse === 'object'
+    ? src.thinkCollapse as Record<string, unknown>
+    : {}
+  const pc = src.processCollapse !== null && typeof src.processCollapse === 'object'
+    ? src.processCollapse as Record<string, unknown>
+    : {}
   return {
     fitMaxHeight: num(src.fitMaxHeight, CLIENT_DEFAULTS.fitMaxHeight),
     zoomBoxHeight: num(src.zoomBoxHeight, CLIENT_DEFAULTS.zoomBoxHeight),
@@ -104,6 +146,14 @@ export function sanitizeClientConfig(data: unknown): ClientConfig {
       edge: str(dc.edge, CLIENT_DEFAULTS.darkColors.edge),
       text: str(dc.text, CLIENT_DEFAULTS.darkColors.text),
       canvas: str(dc.canvas, CLIENT_DEFAULTS.darkColors.canvas),
+    },
+    thinkCollapse: {
+      enabled: bool(tc.enabled, CLIENT_DEFAULTS.thinkCollapse.enabled),
+      minBodyHeight: num(tc.minBodyHeight, CLIENT_DEFAULTS.thinkCollapse.minBodyHeight),
+    },
+    processCollapse: {
+      enabled: bool(pc.enabled, CLIENT_DEFAULTS.processCollapse.enabled),
+      bottomToggleMinHeight: num(pc.bottomToggleMinHeight, CLIENT_DEFAULTS.processCollapse.bottomToggleMinHeight),
     },
   }
 }

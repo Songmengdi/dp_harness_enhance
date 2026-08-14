@@ -8,7 +8,8 @@
  * content-width breakpoints and breathing clearance (see rail.module.css),
  * plus a zcode-style markdown typography restyle of the conversation
  * surface (see typography.css — type scale, weights, ink, tables, and
- * code-block cards).
+ * code-block cards), and a quiet bottom collapse button for tall expanded
+ * Think blocks (see think-collapse.ts).
  *
  * The rail is contributed into the `conversation.session.header.utilities`
  * slot, which ui-conversation declares and owns: this plugin only registers
@@ -27,10 +28,22 @@ import React from 'react'
 import styles from './rail.module.css'
 import { applyCodeLangTagging } from './code-lang'
 import { applyMermaidRenderer } from './mermaid'
+import { applyThinkCollapse } from './think-collapse'
+import { applyProcessCollapse } from './process-collapse'
 // Side effect: injects the zcode-style markdown typography restyle (global,
 // non-module CSS — token overrides + table/code-block chrome) as one
 // <style data-plugin> tag that the loader removes on unload.
 import './typography.css'
+// Side effect: quiet styling for the injected think-block bottom collapse
+// button (see think-collapse.ts).
+import './think-collapse.css'
+// Side effect: per-turn process collapse — attribute-driven hiding plus the
+// injected 「过程细节」toggle row (see process-collapse.ts).
+import './process-collapse.css'
+// Side effect: single-row session header restyle — tabs moved up beside the
+// title via CSS order, active bar docked onto the header hairline (pure CSS,
+// gated on :has(> [role=tablist]); see header.css).
+import './header.css'
 
 /** Required services: the slot registry (provided by the client runtime). */
 export const inject = ['slots']
@@ -109,31 +122,53 @@ function UserTurnRail(props: RailProps): React.ReactElement | null {
     turns.push({ key, seq: data.seq, text: previewText(data.content) })
   }
 
+  // 测量常驻滚动口([data-conversation-scroll])的左缘,并只在 chat 视图
+  // 激活时显示:对话/轨迹两个视图分时渲染进同一个常驻 scrollport(轨迹
+  // 视图没有 [data-chat-flow-key] 会话流行),仅量左缘会让导轨错误地挂在
+  // 轨迹页上。DOM 观察器按 rAF 节流收敛视图切换、流式增行与布局变化。
   React.useEffect(() => {
     if (turns.length === 0) return
     let alive = true
-    let observer: ResizeObserver | null = null
+    let scrollport: HTMLElement | null = null
+    let resizeObserver: ResizeObserver | null = null
     let raf = 0
-    const measure = () => {
+    const evaluate = () => {
+      raf = 0
       if (!alive) return
       const el = document.querySelector('[data-conversation-scroll]')
-      if (el === null) {
-        raf = window.requestAnimationFrame(measure)
+      if (el !== scrollport) {
+        scrollport = el instanceof HTMLElement ? el : null
+        if (resizeObserver !== null) {
+          resizeObserver.disconnect()
+          resizeObserver = null
+        }
+        if (scrollport !== null) {
+          resizeObserver = new ResizeObserver(schedule)
+          resizeObserver.observe(scrollport)
+        }
+      }
+      if (scrollport === null) {
+        setLeft(null)
+        raf = window.requestAnimationFrame(evaluate)
         return
       }
-      setLeft(el.getBoundingClientRect().left)
-      if (observer === null) {
-        observer = new ResizeObserver(measure)
-        observer.observe(el)
-      }
+      const chatActive = scrollport.querySelector('[data-chat-flow-key]') !== null
+      setLeft(chatActive ? scrollport.getBoundingClientRect().left : null)
     }
-    measure()
-    window.addEventListener('resize', measure)
+    const schedule = () => {
+      if (!alive || raf !== 0) return
+      raf = window.requestAnimationFrame(evaluate)
+    }
+    evaluate()
+    const domObserver = new MutationObserver(schedule)
+    domObserver.observe(document.body, { childList: true, subtree: true })
+    window.addEventListener('resize', schedule)
     return () => {
       alive = false
       if (raf !== 0) window.cancelAnimationFrame(raf)
-      if (observer !== null) observer.disconnect()
-      window.removeEventListener('resize', measure)
+      domObserver.disconnect()
+      if (resizeObserver !== null) resizeObserver.disconnect()
+      window.removeEventListener('resize', schedule)
     }
   }, [sessionId, turns.length])
 
@@ -235,6 +270,12 @@ export function apply(ctx: ClientContext): void {
   applyCodeLangTagging(ctx)
   // Replace ```mermaid code blocks with interactive SVG cards (see mermaid.ts).
   applyMermaidRenderer(ctx)
+  // Give tall expanded Think blocks a quiet bottom collapse button (see
+  // think-collapse.ts).
+  applyThinkCollapse(ctx)
+  // Fold each finished turn's intermediate process (think rows, tool cards)
+  // behind a quiet 「过程细节」toggle, zcode-style (see process-collapse.ts).
+  applyProcessCollapse(ctx)
   ctx.slots.inject('conversation.session.header.utilities', () => {
     const dispose = ctx.slots.register({
       name: 'conversation.session.header.utilities',

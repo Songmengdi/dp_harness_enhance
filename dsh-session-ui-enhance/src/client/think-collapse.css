@@ -1,0 +1,54 @@
+/**
+ * dsh-session-ui-enhance — 思考块底部收起的样式(global, non-module)。
+ *
+ * 注入按钮本体是 src/client/think-collapse.ts 创建的 `.z-think-collapse`
+ * (折叠容器尾部、thinkBody 之后——不进正文内部,避免被 React 的
+ * textContent 重写抹掉),这里只负责让它安静:小字、三级墨色,整行都
+ * 是点击区(用户明确要求),hover 时文字深一档并垫一层产品同款悬停底
+ * 色让点击区可被发现;无描边、无动画,亮暗主题全部走
+ * `--dsw-alias-*` token,不写死颜色。
+ *
+ * `[data-variant="think"]` 上的 scroll-margin-top 给收起后的
+ * scrollIntoView 留一口呼吸,不影响产品自身(产品从不滚动到思考块)。
+ */
+
+.z-think-collapse {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 4px 6px;
+  /* 对齐:thinkBody 文本自带 22px 左 padding;按钮在其容器层级,用
+     margin 16px + 自身 padding 6px 把文字对齐到正文左边线,同时整行
+     都是点击区。 */
+  margin: 4px 6px 2px 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: normal;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.z-think-collapse:hover {
+  color: var(--dsw-alias-label-secondary);
+  /* 产品同款悬停底色,让整行点击区可被发现;安静的一档灰,无动画。 */
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.z-think-collapse:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.z-think-collapse svg {
+  flex: none;
+}
+
+[data-variant="think"] {
+  scroll-margin-top: 12px;
+}

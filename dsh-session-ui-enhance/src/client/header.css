@@ -1,0 +1,62 @@
+/**
+ * dsh-session-ui-enhance — 会话头部单行化 + tabs 居中(global, non-module)。
+ *
+ * 产品会话头部是双行堆叠:标题行(min-height 32px)+ tabs 行(上 4px
+ * 间距、tab 下 11px 内边距),内容到来前约 76px 全是 chrome;且 tab 的
+ * 激活蓝条停在自身底部、与 header 底部分隔线错开 1px,若即若离;最常用
+ * 的「对话/轨迹」导航被压在第二行。
+ *
+ * 本表把它收成单行并把 tabs 水平居中:tabs 绝对定位于 header 水平中线
+ * (header 与内容列同宽同中线,panel 开合时同步),标题/模式 chip 居左、
+ * 动作组居右;tabs 撑满整行高,激活蓝条(bottom:1px)恰好落在 header
+ * 分隔线(bottom:1px)上缘——经典顶部导航样式。tablist 脱离文档流,
+ * 纯 CSS,不做任何 DOM 移动,React 结构不受影响。
+ *
+ * 与他插件的相处约定(血泪教训):只覆盖 padding-top/bottom,绝不动
+ * padding-left/right——右 padding 是别人的预留位。dsh-better-sidebar 在
+ * 侧栏收起时(body[data-dsh-sidebar-collapsed])把 header 右 padding 从
+ * 28px 抬到 78px,为其 fixed 在视口右上角的 toggleCluster 腾位;若用
+ * padding 简写整体覆盖,高优先级会顶掉预留,导致其图标与 Session log
+ * 按钮重叠。
+ *
+ * 门禁:`:has(> [role="tablist"])` 只在 tabs 存在(对话/轨迹双 tab)时
+ * 命中;单 tab、隐藏头部(hideChrome)及非会话页的 _header/_tabs 同名
+ * class(ui-workspace、ui-settings-plugins 等)均不受影响。祖先链锁定
+ * `[data-slot="conversation.session.header"]`(头部槽位宿主;注意不是
+ * conversation.session——那是 scrollBody 里会话视图的宿主)。
+ */
+
+/* 单行化:只收垂直 padding;左右 padding 留给产品与他人(见文件头约定)。 */
+[data-slot="conversation.session.header"] [class*="_header"]:has(> [role="tablist"]) {
+  display: flex;
+  align-items: stretch;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* 标题区:内容垂直居中,维持收缩与 ellipsis,动作组保持贴右。 */
+[data-slot="conversation.session.header"] [class*="_header"]:has(> [role="tablist"]) > [class*="_titleRow"] {
+  flex: 1;
+  min-height: 44px;
+}
+
+/* tabs 居中:绝对定位于 header 中线并撑满行高,蓝条随之下移贴合分隔线。
+   脱流后与左侧标题、右侧动作互不推挤;产品原 z-index:1 保留,压得住
+   万一过长的标题。 */
+[data-slot="conversation.session.header"] [class*="_header"]:has(> [role="tablist"]) > [role="tablist"] {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  transform: translateX(-50%);
+  margin-top: 0;
+  padding-left: 0;
+  gap: 20px;
+}
+
+/* tab 文字垂直居中(原 11px 下内边距的职责由撑高 + 居中接管)。 */
+[data-slot="conversation.session.header"] [class*="_header"]:has(> [role="tablist"]) > [role="tablist"] > [class*="_tab"] {
+  display: flex;
+  align-items: center;
+  padding: 0;
+}

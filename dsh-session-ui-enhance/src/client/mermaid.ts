@@ -13,6 +13,7 @@
  * 配置契约:client bundle 无法拿到 host 侧的插件配置(boot graph 只含
  * id/url/rev/inject/immediately),所以启动时从 host 的 client-config 端点
  * 拉取配置快照,失败则回退到编译期默认值(与 host schema 默认值一致)。
+ * 存储已抽至 ./live-config(think-collapse 等其它特性共享同一份快照)。
  *
  * 平台纯度:值 import 是 react / react-dom(平台模块表 seed 词)与
  * mermaid(构建期内联);@deepseek-ai/cordis 仅 type-only。
@@ -21,14 +22,13 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from 'reac
 import { createRoot, type Root } from 'react-dom/client'
 import mermaid from 'mermaid'
 import type { Context } from '@deepseek-ai/cordis'
-import { CLIENT_DEFAULTS, sanitizeClientConfig, type ClientConfig, type DarkColors } from '../shared/client-config'
+import { CLIENT_DEFAULTS, type ClientConfig, type DarkColors } from '../shared/client-config'
 import { clamp, fitScaleFor, summarizeError, uniquifySvgIds } from '../shared/diagram'
+import { configNow, loadClientConfig, setLiveConfig, subscribeConfig } from './live-config'
 
 // ── 契约常量 ────────────────────────────────────────────────────────────────
 const MOUNT_CLASS = 'tcm-mount'
 const CODE_BLOCK_CLASS = 'md-code-block'
-const CONFIG_ENDPOINT = '/plugins/dsh-session-ui-enhance/client-config'
-const CONFIG_FETCH_TIMEOUT_MS = 5000
 /** 流式输出中代码文本稳定多久视为 fence 已闭合、可以尝试渲染。 */
 const STABLE_MS = 600
 
@@ -49,41 +49,6 @@ interface MermaidInlineProps {
   source: string
   themeSvc?: ThemeService | undefined
   cordisCtx?: Context | undefined
-}
-
-// ── 配置存储:apply 时拉取 host 配置快照,成功前用编译期默认值 ──────────────
-let liveConfig: ClientConfig = CLIENT_DEFAULTS
-const configListeners = new Set<() => void>()
-
-function setLiveConfig(cfg: ClientConfig): void {
-  liveConfig = cfg
-  for (const listener of configListeners) listener()
-}
-
-function subscribeConfig(listener: () => void): () => void {
-  configListeners.add(listener)
-  return () => {
-    configListeners.delete(listener)
-  }
-}
-
-function configNow(): ClientConfig {
-  return liveConfig
-}
-
-async function loadClientConfig(): Promise<ClientConfig> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), CONFIG_FETCH_TIMEOUT_MS)
-  try {
-    const res = await fetch(CONFIG_ENDPOINT, {
-      headers: { accept: 'application/json' },
-      signal: controller.signal,
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return sanitizeClientConfig(await res.json())
-  } finally {
-    clearTimeout(timer)
-  }
 }
 
 // ── 图标 ────────────────────────────────────────────────────────────────────

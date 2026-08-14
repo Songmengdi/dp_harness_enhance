@@ -1,0 +1,19 @@
+# dsh-fs-observation-persistence bundle patch: mounts the composition row that
+# activates persistent fs observed-state for sessions. Applied when a profile
+# lists this bundle in dsh.profile.bundles; a profile's own cordis.patch.yml
+# may override this row by id (patch replaces the targeted row's whole config).
+#
+# Semantics: the plugin registers fs/observed (recorder) and
+# fs/{write,edit}-intent (prepend decider) listeners. When the in-process
+# policy state misses (e.g. the process restarted and the session resumed) it
+# answers from the per-session on-disk observation record; every other case is
+# delegated via next() to @deepseek-ai/dsh-fs-observation-policy unchanged.
+# Freshness of a persisted record is NOT trusted: it is handed to the
+# provider's version CAS, so a file changed since the recorded observation
+# still fails with FS_STALE_VERSION and forces a re-read.
+#
+# Tunables come from the Config schema defaults (see README); override this
+# row's config by id in a profile cordis.patch.yml.
+- insert:
+    - id: fs-observation-persistence
+      name: dsh-fs-observation-persistence

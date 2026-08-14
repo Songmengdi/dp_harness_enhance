@@ -15,7 +15,7 @@
  * @module dsh-user-turn-rail/client
  */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, UserMessageNode } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the ui-conversation SlotMap merge (the
 // conversation.session.header.utilities entry) through the assembly boundary.
@@ -26,8 +26,9 @@ import styles from './rail.module.css'
 /** Required services: the slot registry (provided by the client runtime). */
 export const inject = ['slots']
 
-/** One rail row's derived view data. */
+/** One rail row's derived view data; `key` is the engine-owned chat node key. */
 interface Turn {
+  key: string
   seq: number
   text: string
 }
@@ -68,8 +69,10 @@ function previewText(content: readonly TextBlockLike[]): string {
 }
 
 /**
- * The rail body: derives the turn list from the session snapshot, tracks the
- * conversation scrollport's left edge, and renders the interactive bar rail.
+ * The rail body: derives the turn list from the chat view's own visible
+ * order (the same `chat.order` the owner renders from, so rail rows and
+ * DOM flow items can never drift apart), tracks the conversation
+ * scrollport's left edge, and renders the interactive bar rail.
  * @param props - framework session kit (sessionId, useSession, …).
  * @returns the rail, or null while there is nothing to anchor it to.
  */
@@ -78,14 +81,23 @@ function UserTurnRail(props: RailProps): React.ReactElement | null {
   const [left, setLeft] = React.useState<number | null>(null)
   const [hovered, setHovered] = React.useState(-1)
   const [selected, setSelected] = React.useState(-1)
+  const flashRef = React.useRef<HTMLElement | null>(null)
 
-  const nodes = useSession(snapshot => snapshot.nodes)
+  // Authoritative render source: the chat view's visible order + keyed
+  // store, exactly what ui-conversation's ChatView maps into DOM rows.
+  // (The legacy top-level `snapshot.nodes` field keeps every node and its
+  // own order, so an index built from it can silently point at the wrong
+  // row whenever nodes are hidden or reordered.)
+  const order = useSession(snapshot => snapshot.chat.order)
+  const nodeStore = useSession(snapshot => snapshot.chat.nodes)
 
   const turns: Turn[] = []
-  for (const node of nodes) {
-    if (node.kind === 'user') {
-      turns.push({ seq: node.seq, text: previewText(node.content) })
-    }
+  for (const key of order) {
+    const node = nodeStore.get(key)
+    if (node === undefined || node.kind !== 'user') continue
+    const data = node.data as UserMessageNode
+    if (!Array.isArray(data.content)) continue
+    turns.push({ key, seq: data.seq, text: previewText(data.content) })
   }
 
   React.useEffect(() => {
@@ -119,30 +131,63 @@ function UserTurnRail(props: RailProps): React.ReactElement | null {
   if (turns.length === 0 || left === null) return null
 
   const activeIndex = selected >= 0 && selected < turns.length ? selected : turns.length - 1
+  const hoveredIndex = hovered >= 0 && hovered < turns.length ? hovered : -1
 
   const goTo = (index: number) => {
     setSelected(index)
-    const rows = document.querySelectorAll('[data-chat-flow-kind="user"]')
-    const row = rows[index]
-    if (row === undefined) return
+    const turn = turns[index]
+    if (turn === undefined) return
+    // Match the owner's own row by the engine-owned chat node key instead
+    // of positional index: the DOM list is `chat.order` filtered by kind,
+    // so keys stay aligned no matter what the rest of the flow contains.
+    let row: HTMLElement | null = null
+    for (const el of document.querySelectorAll('[data-chat-flow-key]')) {
+      if (el instanceof HTMLElement && el.dataset.chatFlowKey === turn.key) {
+        row = el
+        break
+      }
+    }
+    if (row === null) return
     row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const flashClass = styles.flash ?? ''
+    const prev = flashRef.current
+    if (prev !== null) prev.classList.remove(flashClass)
+    row.classList.add(flashClass)
+    flashRef.current = row
+    window.setTimeout(() => {
+      if (flashRef.current === row) {
+        row.classList.remove(flashClass)
+        flashRef.current = null
+      }
+    }, 1700)
   }
 
   return (
-    <div className={styles.rail} style={{ left: Math.round(left + RAIL_OFFSET) }}>
+    <nav className={styles.rail} style={{ left: Math.round(left + RAIL_OFFSET) }} aria-label="用户轮次定位">
       {turns.map((turn, index) => {
-        const bright = index === activeIndex || index === hovered
-        const dist = hovered < 0 ? -1 : Math.abs(index - hovered)
-        const width = hovered < 0 ? BASE_WIDTH : Math.max(MIN_WIDTH, PEAK_WIDTH - dist * RAMP_STEP)
+        const bright = index === activeIndex || index === hoveredIndex
+        const dist = hoveredIndex < 0 ? -1 : Math.abs(index - hoveredIndex)
+        const width = hoveredIndex < 0 ? BASE_WIDTH : Math.max(MIN_WIDTH, PEAK_WIDTH - dist * RAMP_STEP)
         let opacity = bright ? 1 : 0.5
-        if (hovered >= 0 && !bright) opacity = Math.max(0.26, 0.5 - dist * 0.06)
+        if (hoveredIndex >= 0 && !bright) opacity = Math.max(0.26, 0.5 - dist * 0.06)
         return (
           <div
-            key={String(turn.seq)}
+            key={turn.key}
             className={styles.row}
+            role="button"
+            tabIndex={0}
+            aria-label={`第 ${index + 1} 轮`}
             onMouseEnter={() => setHovered(index)}
             onMouseLeave={() => setHovered(-1)}
+            onFocus={() => setHovered(index)}
+            onBlur={() => setHovered(-1)}
             onClick={() => goTo(index)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                goTo(index)
+              }
+            }}
           >
             <div
               className={styles.line}
@@ -165,7 +210,7 @@ function UserTurnRail(props: RailProps): React.ReactElement | null {
           </div>
         )
       })}
-    </div>
+    </nav>
   )
 }
 

@@ -121,8 +121,12 @@ function clientConfig(): UserConfig {
           cssModules: { pattern: '[hash]_[local]' },
           minify: true,
         })
+        // Iterate sorted keys: lightningcss emits `exports` with hash-map key
+        // order, which would otherwise make every build byte-different and
+        // break the byte-consistency verification of published bundles.
         const classMap: Record<string, string> = {}
-        for (const [local, exp] of Object.entries(cssExports ?? {})) classMap[local] = exp.name
+        const exportsMap = cssExports ?? {}
+        for (const local of Object.keys(exportsMap).sort()) classMap[local] = exportsMap[local].name
         // One <style data-plugin> per module file; idempotent under re-evaluation.
         return [
           `const css = ${JSON.stringify(code.toString())};`,

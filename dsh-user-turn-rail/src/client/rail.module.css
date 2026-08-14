@@ -47,6 +47,39 @@
   transform: translateY(-50%) translateX(0) scale(1);
 }
 
+.row:focus-visible {
+  outline: 2px solid var(--dsw-alias-label-primary, #eeeeee);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+/* Transient highlight for the row a click just located (the rail bar stays
+   bright via the selected state; this flash marks the message itself). */
+.flash {
+  border-radius: 10px;
+  animation: rail-flash 1.6s ease-out;
+}
+
+@keyframes rail-flash {
+  0% {
+    background: color-mix(in srgb, var(--dsw-alias-state-accent, #4d6bfe) 16%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .line,
+  .card {
+    transition: none;
+  }
+
+  .flash {
+    animation: none;
+  }
+}
+
 .card::before {
   content: '';
   position: absolute;

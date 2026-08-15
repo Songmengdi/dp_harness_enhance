@@ -9,6 +9,8 @@ dsh Web GUI 会话优化插件:
 - **思考块底部收起**(自 v1.4.0 起):展开的 Think 折叠行内容无界增长,流式思考时头部收起控件被顶出视口;本插件在「展开的、够高的」思考块正文底部注入一条安静的「收起」小字行(**整行可点**,三级墨色,hover 深一档并垫产品同款悬停底色,无动画)——点击等效于点头部行(转发原生 click 给产品的 `[data-disclosure-row]`,不接管展开状态),随后把块头滚回视口保住阅读位置。显示阈值由 `thinkCollapse.minBodyHeight`(默认 320px)控制,`thinkCollapse.enabled: false` 可整体关闭
 - **轮次过程折叠(zcode 式,自 v1.4.0 起)**:轮次定稿(出现 turn-tail)且无错后,把「最终响应」之外的中间过程——思考行、工具卡片、重试行、上下文提醒——折叠成一条安静的「过程细节 N 项」小字行(整行可点、Enter/Space 可达、按轮次 id 记忆展开状态);展开的过程区够高(默认 480px,`processCollapse.bottomToggleMinHeight` 可调)时,底部再出现一条同款「收起过程」行,读完不必滚回顶部,点击后折叠行自动滚回视口。最终响应 = 组内最后一个非空 assistant-step(其内部思考行也折叠,正文/图片/mermaid 卡片保留)。简单问答轮无过程可折,不出现折叠行;流式中的轮次绝不折叠;出错的轮次保留过程便于排查。`processCollapse.enabled: false` 可整体关闭
 - **工作区会话行操作(自 v1.5.0 起)**:左侧工作区单个会话行的「...」按钮替换为**归档按钮**(同款图标按钮样式,单击直接归档,当前会话归档后产品自动清空选中);原菜单中的另外两项——**重命名 / 分叉会话**——改为**右键会话行**弹出本插件的上下文菜单,选择后走同一转发路径打开产品原生对话框/行为。产品 ui-workspace 的会话行没有行级 slot,本特性沿用插件既有 DOM 增强模式(隐藏原按钮 + 注入归档按钮,程序化转发原生 click 复用产品 handler,不接管会话状态);中英文案跟随产品 locale,卸载时自动还原原「...」按钮。`workspaceActions.enabled: false` 可整体关闭
+- **用户消息气泡精致化 + 超长收缩**(自 v1.6.0 起):22px 大圆角灰块重排为 14px 小圆角(右下 6px 尾角,保留聊天气泡的方向感)、14/22 紧凑字号(与会话正文尺度对齐)、补一道细描边;超长输入(粘贴日志/长需求)超过 `userBubble.collapseHeight`(默认 160px,含 24px 缓冲避免刚超一行的尴尬折叠)即收缩为 max-height 截断 + 底部同底色渐变淡出,气泡下方出现安静的「展开全部/收起」小字按钮(按气泡记忆展开选择,重排版不重置;pending 中的 steering 气泡不折叠)。`userBubble.enabled: false` 可整体关闭
+- **底部输入框(composer)精致化**(自 v1.6.0 起):卡片 22px 大圆角收成 16px、字号 16/24 压到 14/22、顶部留白与内容区间距收紧;`:focus-within` 时描边换主色并加一圈 12% 主色柔和光晕——输入中状态第一次有了视觉反馈。纯 CSS 挂在产品稳定属性 `[data-composer-card]` 上,全部走 `--dsw-alias-*` token 亮暗自适应。`composer.enabled: false` 可整体关闭
 - **会话头部单行化 + tabs 居中**(自 v1.4.0 起,`src/client/header.css`,纯 CSS):「对话/轨迹」tabs 脱离文档流、绝对定位于 header 水平中线(header 与内容列同宽同中线,侧栏 panel 开合时同步),标题/模式 chip 居左、动作组居右,header 从 ~76px 收成 ~44px;tab 激活蓝条与 header 分隔线精确贴合(经典顶部导航样式)。只覆盖垂直 padding,左右 padding 留给产品与其他插件(dsh-better-sidebar 在侧栏收起时把 header 右 padding 抬到 78px 为其 fixed 图标组腾位,互不干扰)。`:has(> [role=tablist])` 门禁——仅双 tab 时生效,单 tab 与无头部场景保持产品原样;零 DOM 移动,React 结构不受影响
 
 > 前身是 `dsh-user-turn-rail`,自本版本起更名为 `dsh-session-ui-enhance`;功能不变,包名、组合行 id(`session-ui-enhance`)、client 条目 id 全部换新,旧名包装与新包互不相同,迁移时先 `dsh plugin remove dsh-user-turn-rail` 再按下文安装。
@@ -34,6 +36,11 @@ dsh Web GUI 会话优化插件:
       bottomToggleMinHeight: 480     # 展开过程区达到该高度(px)底部出现「收起过程」
     workspaceActions:
       enabled: true                  # 会话行「...」改为归档按钮,重命名/分叉移入右键菜单
+    userBubble:
+      enabled: true                  # 用户气泡精致化(小圆角/紧凑字号/细描边)
+      collapseHeight: 160            # 气泡内容超过该高度(px)收缩为「展开全部」
+    composer:
+      enabled: true                  # 底部输入框精致化(小圆角/紧凑字号/焦点光晕)
 ```
 
 完整字段见 `src/config.ts`(mermaid 渲染超时护栏、缩放区间、深色调色板、思考块底部收起等,均带默认值)。

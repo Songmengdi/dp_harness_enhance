@@ -9,7 +9,10 @@
  * plus a zcode-style markdown typography restyle of the conversation
  * surface (see typography.css — type scale, weights, ink, tables, and
  * code-block cards), and a quiet bottom collapse button for tall expanded
- * Think blocks (see think-collapse.ts).
+ * Think blocks (see think-collapse.ts). User message bubbles get a quiet
+ * restyle (smaller radius, compact type, hairline border) plus a collapse
+ * toggle for overlong inputs (see user-bubble.ts); the composer card gets a
+ * matching restyle with a focus ring (see composer.ts).
  *
  * The rail is contributed into the `conversation.session.header.utilities`
  * slot, which ui-conversation declares and owns: this plugin only registers
@@ -31,6 +34,8 @@ import { applyMermaidRenderer } from './mermaid'
 import { applyThinkCollapse } from './think-collapse'
 import { applyProcessCollapse } from './process-collapse'
 import { applyWorkspaceActions } from './workspace-actions'
+import { applyUserBubble } from './user-bubble'
+import { applyComposerStyle } from './composer'
 // Side effect: injects the zcode-style markdown typography restyle (global,
 // non-module CSS — token overrides + table/code-block chrome) as one
 // <style data-plugin> tag that the loader removes on unload.
@@ -48,6 +53,12 @@ import './header.css'
 // Side effect: workspace session-row actions — 「...」 becomes an archive
 // button and rename/fork move to a right-click menu (see workspace-actions.ts).
 import './workspace-actions.css'
+// Side effect: user message bubble restyle + long-input collapse chrome
+// (gated on body[data-z-user-bubble]; see user-bubble.ts).
+import './user-bubble.css'
+// Side effect: composer card restyle — smaller radius, compact type, focus
+// ring (gated on body[data-z-composer]; see composer.ts).
+import './composer.css'
 
 /** Required services: the slot registry (provided by the client runtime). */
 export const inject = ['slots']
@@ -284,6 +295,11 @@ export function apply(ctx: ClientContext): void {
   // archive and move rename/fork into a right-click menu (see
   // workspace-actions.ts).
   applyWorkspaceActions(ctx)
+  // User message bubbles: quiet restyle + collapse for overlong inputs
+  // (see user-bubble.ts).
+  applyUserBubble(ctx)
+  // Composer card restyle gate (see composer.ts).
+  applyComposerStyle(ctx)
   ctx.slots.inject('conversation.session.header.utilities', () => {
     const dispose = ctx.slots.register({
       name: 'conversation.session.header.utilities',

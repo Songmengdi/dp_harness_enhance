@@ -36,6 +36,20 @@ export interface WorkspaceActionsConfig {
   enabled: boolean
 }
 
+/** 用户消息气泡的重排与超长收缩。 */
+export interface UserBubbleConfig {
+  /** 用户气泡精致化(小圆角/紧凑字号/细描边)与超长收缩 */
+  enabled: boolean
+  /** 气泡内容超过该高度(px)时收缩为渐变截断 + 「展开全部」 */
+  collapseHeight: number
+}
+
+/** 底部输入框(composer)的精致化重排。 */
+export interface ComposerStyleConfig {
+  /** composer 卡片小圆角/紧凑字号/焦点描边环重排 */
+  enabled: boolean
+}
+
 /** 下发给浏览器的渲染配置(host Config 的客户端可见子集)。 */
 export interface ClientConfig {
   /** 适配模式的最大展示高度(px) */
@@ -58,6 +72,10 @@ export interface ClientConfig {
   processCollapse: ProcessCollapseConfig
   /** 工作区会话行操作(归档按钮 + 右键菜单) */
   workspaceActions: WorkspaceActionsConfig
+  /** 用户消息气泡(精致化 + 超长收缩) */
+  userBubble: UserBubbleConfig
+  /** 底部输入框精致化 */
+  composer: ComposerStyleConfig
 }
 
 /** 轮次过程折叠的可调参数。 */
@@ -104,6 +122,13 @@ export const CLIENT_DEFAULTS: ClientConfig = {
   workspaceActions: {
     enabled: true,
   },
+  userBubble: {
+    enabled: true,
+    collapseHeight: 160,
+  },
+  composer: {
+    enabled: true,
+  },
 }
 
 /** 从完整 host 配置投影出客户端子集(host 的 client-config 端点使用)。 */
@@ -119,6 +144,8 @@ export function clientConfigOf(config: ClientConfig): ClientConfig {
     thinkCollapse: { ...config.thinkCollapse },
     processCollapse: { ...config.processCollapse },
     workspaceActions: { ...config.workspaceActions },
+    userBubble: { ...config.userBubble },
+    composer: { ...config.composer },
   }
 }
 
@@ -147,6 +174,12 @@ export function sanitizeClientConfig(data: unknown): ClientConfig {
   const wa = src.workspaceActions !== null && typeof src.workspaceActions === 'object'
     ? src.workspaceActions as Record<string, unknown>
     : {}
+  const ub = src.userBubble !== null && typeof src.userBubble === 'object'
+    ? src.userBubble as Record<string, unknown>
+    : {}
+  const cp = src.composer !== null && typeof src.composer === 'object'
+    ? src.composer as Record<string, unknown>
+    : {}
   return {
     fitMaxHeight: num(src.fitMaxHeight, CLIENT_DEFAULTS.fitMaxHeight),
     zoomBoxHeight: num(src.zoomBoxHeight, CLIENT_DEFAULTS.zoomBoxHeight),
@@ -172,6 +205,13 @@ export function sanitizeClientConfig(data: unknown): ClientConfig {
     },
     workspaceActions: {
       enabled: bool(wa.enabled, CLIENT_DEFAULTS.workspaceActions.enabled),
+    },
+    userBubble: {
+      enabled: bool(ub.enabled, CLIENT_DEFAULTS.userBubble.enabled),
+      collapseHeight: num(ub.collapseHeight, CLIENT_DEFAULTS.userBubble.collapseHeight),
+    },
+    composer: {
+      enabled: bool(cp.enabled, CLIENT_DEFAULTS.composer.enabled),
     },
   }
 }

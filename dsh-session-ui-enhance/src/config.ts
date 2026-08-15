@@ -7,7 +7,7 @@
  * shared/client-config.ts,由单测断言两者默认值一致(防漂移)。
  */
 import Schema from '@deepseek-ai/schemastery'
-import { CLIENT_DEFAULTS, clientConfigOf, type ClientConfig, type DarkColors, type ProcessCollapseConfig, type ThinkCollapseConfig, type WorkspaceActionsConfig } from './shared/client-config.js'
+import { CLIENT_DEFAULTS, clientConfigOf, type ClientConfig, type ComposerStyleConfig, type DarkColors, type ProcessCollapseConfig, type ThinkCollapseConfig, type UserBubbleConfig, type WorkspaceActionsConfig } from './shared/client-config.js'
 
 export interface Config {
   /** 适配模式最大展示高度(px) */
@@ -30,6 +30,10 @@ export interface Config {
   processCollapse: ProcessCollapseConfig
   /** 工作区会话行操作(「...」改为归档按钮,重命名/分叉移入右键菜单) */
   workspaceActions: WorkspaceActionsConfig
+  /** 用户消息气泡(精致化重排 + 超长收缩) */
+  userBubble: UserBubbleConfig
+  /** 底部输入框(composer)精致化重排 */
+  composer: ComposerStyleConfig
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -58,7 +62,14 @@ export const Config: Schema<Config> = Schema.object({
   workspaceActions: Schema.object({
     enabled: Schema.boolean().default(CLIENT_DEFAULTS.workspaceActions.enabled),
   }),
+  userBubble: Schema.object({
+    enabled: Schema.boolean().default(CLIENT_DEFAULTS.userBubble.enabled),
+    collapseHeight: Schema.number().min(80).max(480).default(CLIENT_DEFAULTS.userBubble.collapseHeight),
+  }),
+  composer: Schema.object({
+    enabled: Schema.boolean().default(CLIENT_DEFAULTS.composer.enabled),
+  }),
 })
 
 export { CLIENT_DEFAULTS, clientConfigOf }
-export type { ClientConfig, DarkColors, ThinkCollapseConfig, ProcessCollapseConfig, WorkspaceActionsConfig }
+export type { ClientConfig, DarkColors, ThinkCollapseConfig, ProcessCollapseConfig, WorkspaceActionsConfig, UserBubbleConfig, ComposerStyleConfig }

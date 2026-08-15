@@ -28,6 +28,9 @@ test('schema 默认值 === CLIENT_DEFAULTS', () => {
   assert.equal(dict.processCollapse.dict.enabled.meta.default, CLIENT_DEFAULTS.processCollapse.enabled, 'processCollapse.enabled 默认值漂移')
   assert.equal(dict.processCollapse.dict.bottomToggleMinHeight.meta.default, CLIENT_DEFAULTS.processCollapse.bottomToggleMinHeight, 'processCollapse.bottomToggleMinHeight 默认值漂移')
   assert.equal(dict.workspaceActions.dict.enabled.meta.default, CLIENT_DEFAULTS.workspaceActions.enabled, 'workspaceActions.enabled 默认值漂移')
+  assert.equal(dict.userBubble.dict.enabled.meta.default, CLIENT_DEFAULTS.userBubble.enabled, 'userBubble.enabled 默认值漂移')
+  assert.equal(dict.userBubble.dict.collapseHeight.meta.default, CLIENT_DEFAULTS.userBubble.collapseHeight, 'userBubble.collapseHeight 默认值漂移')
+  assert.equal(dict.composer.dict.enabled.meta.default, CLIENT_DEFAULTS.composer.enabled, 'composer.enabled 默认值漂移')
 })
 
 test('clientConfigOf: 只投影已知字段且深拷贝嵌套配置', () => {
@@ -46,6 +49,10 @@ test('clientConfigOf: 只投影已知字段且深拷贝嵌套配置', () => {
   assert.notEqual(CLIENT_DEFAULTS.processCollapse.enabled, false)
   projected.workspaceActions.enabled = false
   assert.notEqual(CLIENT_DEFAULTS.workspaceActions.enabled, false)
+  projected.userBubble.enabled = false
+  assert.notEqual(CLIENT_DEFAULTS.userBubble.enabled, false)
+  projected.composer.enabled = false
+  assert.notEqual(CLIENT_DEFAULTS.composer.enabled, false)
 })
 
 test('sanitizeClientConfig: 非对象输入回退默认值', () => {
@@ -65,6 +72,8 @@ test('sanitizeClientConfig: 逐字段类型清洗,坏字段回退', () => {
     thinkCollapse: { enabled: 'yes', minBodyHeight: 480 },
     processCollapse: { enabled: 0, bottomToggleMinHeight: 600 },
     workspaceActions: { enabled: 1 },
+    userBubble: { enabled: 'yes', collapseHeight: 200 },
+    composer: { enabled: 0 },
   })
   assert.equal(cleaned.fitMaxHeight, 999)
   assert.equal(cleaned.zoomBoxHeight, CLIENT_DEFAULTS.zoomBoxHeight)
@@ -79,6 +88,9 @@ test('sanitizeClientConfig: 逐字段类型清洗,坏字段回退', () => {
   assert.equal(cleaned.processCollapse.enabled, CLIENT_DEFAULTS.processCollapse.enabled)
   assert.equal(cleaned.processCollapse.bottomToggleMinHeight, 600)
   assert.equal(cleaned.workspaceActions.enabled, CLIENT_DEFAULTS.workspaceActions.enabled)
+  assert.equal(cleaned.userBubble.enabled, CLIENT_DEFAULTS.userBubble.enabled)
+  assert.equal(cleaned.userBubble.collapseHeight, 200)
+  assert.equal(cleaned.composer.enabled, CLIENT_DEFAULTS.composer.enabled)
 })
 
 test('sanitizeClientConfig: 旧版 host 快照缺新字段时回退默认值', () => {
@@ -86,8 +98,12 @@ test('sanitizeClientConfig: 旧版 host 快照缺新字段时回退默认值', (
   delete legacy.thinkCollapse
   delete legacy.processCollapse
   delete legacy.workspaceActions
+  delete legacy.userBubble
+  delete legacy.composer
   const cleaned = sanitizeClientConfig(legacy)
   assert.deepEqual(cleaned.thinkCollapse, CLIENT_DEFAULTS.thinkCollapse)
   assert.deepEqual(cleaned.processCollapse, CLIENT_DEFAULTS.processCollapse)
   assert.deepEqual(cleaned.workspaceActions, CLIENT_DEFAULTS.workspaceActions)
+  assert.deepEqual(cleaned.userBubble, CLIENT_DEFAULTS.userBubble)
+  assert.deepEqual(cleaned.composer, CLIENT_DEFAULTS.composer)
 })

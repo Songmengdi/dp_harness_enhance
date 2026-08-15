@@ -1,0 +1,33 @@
+/**
+ * dsh-session-ui-enhance — 底部输入框(composer)精致化样式(global, non-module)。
+ *
+ * 全部规则挂在 body[data-z-composer] 门禁上(由 composer.ts 按配置翻
+ * 转),配置关闭即整体还原。卡片锚点是产品的稳定属性
+ * `[data-composer-card]`,不依赖 CSS Modules hash;内部行(工具行/输入
+ * 区)走属性子串 `[class*="_row"]` 等,与 typography.css 同一约定。
+ *
+ * 重排要点:
+ * - 22px 大圆角收成 16px,与用户气泡的 14px 形成「容器略圆、内容略
+ *   方」的层级;
+ * - 字号 16/24 压到 14/22,与会话正文尺度(typography.css)对齐;
+ * - 顶部留白 10px→8px、内容区间距 12px→8px,整体更紧凑;
+ * - 常态描边不动(保持产品的安静),`:focus-within` 时描边换主色并加
+ *   一圈 12% 主色的柔和光晕——输入中状态第一次有了反馈;
+ * - 全部走 `--dsw-alias-*` token + color-mix,亮暗主题自适应,不写死
+ *   颜色。
+ */
+
+body[data-z-composer] [data-composer-card] {
+  border-radius: 16px;
+  padding-top: 8px;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 22px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+body[data-z-composer] [data-composer-card]:focus-within {
+  border-color: var(--dsw-alias-state-business-primary);
+  box-shadow: var(--dsw-shadow-lv2),
+    0 0 0 3px color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);
+}

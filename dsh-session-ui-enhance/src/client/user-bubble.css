@@ -1,0 +1,91 @@
+/**
+ * dsh-session-ui-enhance — 用户消息气泡精致化 + 超长收缩样式(global, non-module)。
+ *
+ * 全部规则挂在 body[data-z-user-bubble] 门禁上(由 user-bubble.ts 按配置
+ * 翻转),配置关闭即整体还原产品原样。气泡选择器走属性子串
+ * `[class*="_bubble"]`(产品 CSS Modules hash 会随构建漂移,与
+ * typography.css 同一约定),并始终限定在 `[data-chat-flow-kind="user"]`
+ * 轮次内,不碰其它插件(如 goal)的同名气泡。
+ *
+ * 重排:22px 大圆角收成 14px,右下角留 6px 尾角(聊天气泡的方向感小
+ * 细节);16/24 字号压到 14/22 与 typography.css 的正文尺度对齐;
+ * padding 10/16 收为 8/12;补一道与输入框同款的细描边让灰块边缘更
+ * 利落。亮暗主题全部走 `--dsw-alias-*` token,不写死颜色。
+ *
+ * 收缩:user-bubble.ts 在气泡容器上置 `data-z-collapse` 与
+ * `--z-bubble-collapse-max`;collapsed 时气泡 max-height 截断、底部
+ * 40px 用气泡自身底色做渐变淡出(示意下文还有内容),expanded 时全部
+ * 还原。折叠开关 `.z-bubble-toggle` 注入在气泡之后,样式与
+ * think-collapse 的「收起」同款:小字、三级墨色、hover 垫产品同款底色。
+ */
+
+body[data-z-user-bubble] [data-chat-flow-kind="user"] [class*="_bubble"] {
+  border-radius: 14px;
+  border-bottom-right-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 22px;
+  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+  overflow-wrap: anywhere;
+  /* 折叠渐变的定位锚(常态下无副作用)。 */
+  position: relative;
+}
+
+/* 超长收缩:max-height 截断 + 底部同底色渐变淡出。 */
+body[data-z-user-bubble] [data-z-collapse="collapsed"] [class*="_bubble"] {
+  max-height: var(--z-bubble-collapse-max);
+  overflow: hidden;
+}
+
+body[data-z-user-bubble] [data-z-collapse="collapsed"] [class*="_bubble"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 40px;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, var(--dsw-specific-bubble));
+  border-bottom-right-radius: 6px;
+}
+
+/* 收起时 scrollIntoView 留一口呼吸(对齐 think-collapse 的约定)。 */
+body[data-z-user-bubble] [data-chat-flow-kind="user"] [class*="_bubble"] {
+  scroll-margin-top: 12px;
+}
+
+/* 折叠开关:气泡之后、右对齐(userStack 本身是 flex-end 列)。 */
+.z-bubble-toggle {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 4px 6px;
+  margin: 2px 4px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-end;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: normal;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.z-bubble-toggle:hover {
+  color: var(--dsw-alias-label-secondary);
+  /* 产品同款悬停底色,让点击区可被发现;安静的一档灰,无动画。 */
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.z-bubble-toggle:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.z-bubble-toggle svg {
+  flex: none;
+}

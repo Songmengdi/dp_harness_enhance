@@ -1,0 +1,3 @@
+name: 工具引导零工具标准模式
+description: 第一条真实消息前自动插入固定锚定消息,首个模型请求 0 工具,锚定回复后开放完整 Standard 工具目录;原 Standard system prompt 以 persona context 注入。
+order: 9

@@ -1,6 +1,6 @@
 {
   "name": "dsh-tool-bootstrap",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "Anchored tool-catalog bootstrap gate for dsh agent presets: the first model request (optionally an automatic prewarm turn) sees one native shell plus a small always-on set and a capped output budget; promotion opens the preset complete catalog.",
   "type": "module",
   "main": "lib/index.js",
@@ -52,6 +52,7 @@
     "test": "node --test test/*.test.js",
     "verify": "npm run typecheck && npm run build && npm run test",
     "sync:preset": "node scripts/sync-preset.mjs",
+    "sync:preset:release": "SYNC_RELEASE=1 node scripts/sync-preset.mjs",
     "sync:e2e-profile": "node scripts/sync-e2e-profile.mjs",
     "e2e": "npm run build && npm run sync:preset && npm run sync:e2e-profile && dsh --profile anchored-e2e",
     "dev": "npm run build && npm run sync:preset"

@@ -33,7 +33,7 @@ async function boot(config = {}, { agents = false, before = undefined } = {}) {
   const scope = createScope(ctx, scopeKey)
   // 真实 preset 挂载里插件 ctx 的 baseUrl 是 preset composition 目录;
   // 测试用同样的形态让插件能推导出自己的 preset id 并启用 prewarm。
-  const scoped = scope.ctx.extend({ baseUrl: new URL('file:///presets/anchored-test/').href })
+  const scoped = scope.ctx.extend({ baseUrl: new URL('file:///presets/tool-bootstrap-standard/').href })
   await before?.(scoped)
   await scoped.plugin(Bootstrap, {
     shellTools: ['bash', 'pwsh'],
@@ -131,10 +131,11 @@ test('prewarm drives one user followup for a fresh session through agent/created
     await tick()
     assert.equal(agent.messages.length, 1)
     assert.deepEqual(agent.messages[0].content, [{ type: 'text', text: 'warm up turn one' }])
-    assert.equal(agent.messages[0].source.kind, 'user')
+    assert.equal(agent.messages[0].source.kind, 'plugin')
+    assert.equal(agent.messages[0].source.form, 'prewarm')
 
     // 两条触发路径都必须幂等:同一会话不会收到第二次预热。
-    ctx.emit('session/event', agent.session, { type: 'agent-preset/selected', data: { agentPreset: 'anchored-test' } })
+    ctx.emit('session/event', agent.session, { type: 'agent-preset/selected', data: { agentPreset: 'tool-bootstrap-standard' } })
     await tick()
     assert.equal(agent.messages.length, 1)
   } finally {
@@ -152,7 +153,7 @@ test('prewarm follows the GUI two-step selection path without an agent/created d
     // agent-preset/selected 事件。
     const selected = joinAgent(ctx, fakeAgent({ id: 'session-gui' }), scopeKey)
     agents.enter(selected, undefined)
-    ctx.emit('session/event', selected.session, { type: 'agent-preset/selected', data: { agentPreset: 'anchored-test' } })
+    ctx.emit('session/event', selected.session, { type: 'agent-preset/selected', data: { agentPreset: 'tool-bootstrap-standard' } })
     await tick()
     assert.equal(selected.messages.length, 1)
     assert.equal(selected.messages[0].content[0].text, 'warm up turn one')

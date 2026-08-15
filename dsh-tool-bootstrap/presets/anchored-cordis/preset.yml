@@ -1,3 +1,0 @@
-name: Anchored Cordis (实验)
-description: 创造模式的锚定版(不含 cordis 自省工具):自动以 ls 预热回合锚定(Minimal persona + shell/read),用户消息从第二轮开始并恢复创造 persona 与完整目录。
-order: 6

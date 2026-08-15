@@ -26,8 +26,9 @@ async function rootWithPreset(t) {
 const PRESETS = await listPresetIds()
 
 test('the bundled preset collection is discovered as healthy', async (t) => {
-  assert.ok(PRESETS.includes('anchored-standard'), 'anchored-standard must ship')
-  assert.ok(PRESETS.includes('anchored-cordis'), 'anchored-cordis must ship')
+  assert.ok(PRESETS.includes('tool-bootstrap-standard'), 'tool-bootstrap-standard must ship')
+  assert.ok(PRESETS.includes('tool-bootstrap-cordis'), 'tool-bootstrap-cordis must ship')
+  assert.ok(PRESETS.includes('tool-bootstrap-zero-standard'), 'tool-bootstrap-zero-standard must ship')
   const root = await rootWithPreset(t)
 
   const ids = []
@@ -54,10 +55,12 @@ test('the bundled preset collection is discovered as healthy', async (t) => {
     assert.equal(typeof preset.order, 'number', `${preset.id} must declare an order`)
   }
 
-  const cordis = discovered.find((preset) => preset.id === 'anchored-cordis')
+  const cordis = discovered.find((preset) => preset.id === 'tool-bootstrap-cordis')
   assert.match(cordis.description, /cordis/)
-  const standard = discovered.find((preset) => preset.id === 'anchored-standard')
-  assert.match(standard.description, /shell\/read/)
+  const standard = discovered.find((preset) => preset.id === 'tool-bootstrap-standard')
+  assert.match(standard.description, /Standard/)
+  const zero = discovered.find((preset) => preset.id === 'tool-bootstrap-zero-standard')
+  assert.match(zero.description, /0 工具/)
 })
 
 test('a malformed composition is reported broken, so the check is not vacuous', async (t) => {

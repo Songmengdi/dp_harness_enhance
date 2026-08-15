@@ -1,55 +1,65 @@
-# The `anchored-cordis` user preset: the shipped `cordis` preset (创造模式) with
-# the anchored bootstrap gate on the first request — WITHOUT the cordis_* tools.
+# The `tool-bootstrap-zero-standard` user preset: Standard catalog with a
+# zero-tool anchor turn before the first real user message.
 #
 # 派生说明:
-# - 组合为本地 harness 0.1.0-rc.6(@ 4dacfe77a24dead72de749c0876028b77b99cd04)
-#   随附 `cordis` preset 的快照(保留其 persona 与 skill-filesystem 的 skills/
-#   目录);升级 harness 后先对照上游改动再继续使用。
+# - 基于 tool-bootstrap-standard(原 Standard persona 走 persona context)加 zero-tool
+#   锚定:用户第一条真实消息到达时,插件把固定锚定消息插到它前面;首个模型请求暴露
+#   0 个工具,首个持久 assistant/message 落盘后开放 Standard 完整工具目录,用户的
+#   真实消息带着全量工具继续。
+# - 工具清单为本地 harness 0.1.0-rc.6(@ 4dacfe77a24dead72de749c0876028b77b99cd04)
+#   随附 `standard` preset 的完整快照;升级 harness 后先对照上游改动再继续使用。
 # - `tool-bootstrap` 行保持在组合第一位;它的 agent/pre-step 监听以 prepend 注册,
-#   恒为瀑布最外层——loader 并发激活下 tool-skill 即使先注册,skill catalog 也会
-#   在本插件之后追加,由本插件做最终过滤。预热回合因此只含 prewarm 消息,且
-#   persona 槽被替换为 Minimal 一句话;turn 2 起恢复本模式原 persona,AGENTS.md
-#   在晋升后由插件注入。用户的真实消息从 turn 2 开始。
-# - 刻意移除 `tool-cordis`:它注册的 Host Cordis Inspect 提供器是进程级单例
-#   ("Service" 等固定 id,进程存活期内不释放),官方 `cordis` 预设先挂载后,
-#   任何含 tool-cordis 的第二个预设都会以 "already registered" 挂载失败
-#   (本仓库 e2e 已复现)。因此本预设与官方创造模式可在同进程共存,但代价是
-#   不含 cordis_* 自省工具——组合创作走 persona 指引 + skills + fs 工具;
-#   需要自省工具时用官方创造模式。
+#   恒为瀑布最外层,保证锚定回合不被 skill-catalog 等注入提醒污染。
+#
+# This file is an AGENT-PLANE composition. The roster mounts it ONCE under a
+# standing scope; every session naming it joins by scope parentage, so the
+# tools and prompt sections registered here cover each joined agent while a
+# session's own state stays keyed per Session/Agent inside the plugins. The
+# host composition (`base.cordis.yml` + `web.cordis.yml`) keeps everything a
+# preset must not own: the registries themselves, the sandbox and approval
+# stack, persistence, and the model route.
+#
+# A service row here MUST sit inside a group carrying an `isolate` realm.
+# Without one it publishes into the root realm, where it is process-global —
+# another preset publishing the same name collides, and a host reader would
+# resolve one preset's instance for every session; `dsh-agent-presets` rejects
+# that at mount. `true` means an entry-local realm: this standing mount's own
+# private instance, apart from every other preset's. (A shared label does NOT
+# pool instances — `provide()` throws on the second registration under the
+# same realm symbol; labels join REALMS, and are not what this file needs.)
 
 # ── bootstrap (must stay FIRST) ─────────────────────────────────────────────
 
+# 必须保持第一行;zeroTools + anchorMessage 复刻上游 zero-anchored-standard:
+# 第一条真实消息前插固定锚定消息,首个模型请求 0 工具,首个 assistant/message
+# 落盘后开放完整目录;persona context 注入与 tool-bootstrap-standard 相同。
 - id: tool-bootstrap
   name: __TOOL_BOOTSTRAP_LIB__
   config:
     shellTools: [bash, pwsh]
     alwaysTools: [read]
-    promoteOn: first-turn-complete
+    promoteOn: assistant-message
     bootstrapMaxTokens: 1024
-    prewarm: true
-    prewarmMessage: Run the bash command ls and reply with exactly the word done.
+    prewarm: false
     prewarmPersona: You are a helpful software engineer assistant.
+    zeroTools: true
+    anchorMessage: This round is a test. Tools are not open yet; all tools will open next round.
 
 # ── identity ────────────────────────────────────────────────────────────────
 
-# 原模式 cordis persona;includeRuntimeContext:false 让首轮保持干净的锚定请求。
+# 原 Standard 模式的 persona(与官方 standard preset 一致):system prompt 由
+# tool-bootstrap 全程压成 Minimal 锚定句,这份原 system prompt(harness identity
+# + 本 persona + 工具使用指导)在晋升后作为 persona context 消息注入。
+# includeRuntimeContext:false 关闭运行时 context 注入。
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: |-
-      You are a coding agent powered by the {{model}} model, running on the DeepSeek Harness. Your working directory is {{cwd}}.
-
-      You can read and modify the harness you run on. Its composition is Cordis: every capability is a plugin row in a `cordis.yml`, and an agent preset is one such file mounted for a single session.
-
-      Two planes decide where an edit belongs. The HOST composition holds the registries and anything shared across sessions — persistence, the sandbox and approval stack, the model route, the subagent registry and its backends. An AGENT PRESET holds what one session contributes to those registries: its tools, its persona, its prompt sections. A row that publishes a service belongs in the host composition, or inside an `isolate` realm if the preset genuinely owns that service and nothing outside one agent reads it.
-
-      Presets you author live one directory per preset under `${DSH_HOME:-$HOME/.dsh}/.agent-presets/<id>/`; the roster reports each preset's real path, so take the one you edit from there. NEVER edit or delete the shipped preset install (the `agent-presets` directory beside the deployment's own config): it belongs to the deployment, an upgrade overwrites it, and corrupting the `cordis` preset would disable this very mode. To change what a shipped preset does, copy its composition into a new preset directory and edit the copy.
-
-      Load the `editing-cordis-compositions` skill before writing or changing a composition.
+    text: >-
+      You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
     includeRuntimeContext: false
 
-# 不挂 agent-instructions 行:rc.6 中该监听器恒定位于 pre-step 瀑布外层,首请求
-# 无法被本插件剥离;AGENTS.md 改由 tool-bootstrap 在晋升后自行注入。
+# 不挂 agent-instructions 行:rc.6 中该监听器位于 pre-step 瀑布,本插件以 prepend
+# 注册做最终过滤;AGENTS.md 改由 tool-bootstrap 在晋升后自行注入。
 
 # ── shell ───────────────────────────────────────────────────────────────────
 
@@ -91,6 +101,19 @@
 # chooses is whether its agent can collect and stop background work at all.
 - id: tool-jobs
   name: '@deepseek-ai/dsh-tool-jobs'
+
+# ── skills ──────────────────────────────────────────────────────────────────
+
+# The skill REGISTRY lives in the host composition and is layered per scope:
+# these rows register into THIS preset's layer of it, so they need no realm.
+# `skill-filesystem` contributes local-root discovery for agents on this preset, and
+# `tool-skill` gives them the catalog and loader; the merged catalog also
+# carries whatever the deployment registered globally (repository plugins).
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
 
 # ── goals ───────────────────────────────────────────────────────────────────
 
@@ -255,24 +278,3 @@
   config:
     fetch: false
     searchTimeoutMs: 60000
-
-# ── self-modification ───────────────────────────────────────────────────────
-#
-# 刻意不含 tool-cordis(cordis_* 自省工具):其 Host Cordis Inspect 提供器是
-# 进程级单例,官方创造模式已挂载时二次注册即失败——见本文件头部派生说明。
-
-# The composition-authoring skill travels with this preset rather than living
-# in the user's skill root: it documents THIS deployment's two planes, and a
-# preset is the unit that gets copied and edited. `baseUrl` is the preset's
-# own directory, so the root resolves wherever the preset is installed.
-# Both rows register into THIS preset's layer of the host skill registry, so
-# they need no realm; the agent's merged catalog also carries whatever the
-# deployment registered globally (repository plugins).
-- id: skill-filesystem
-  name: '@deepseek-ai/dsh-skill-filesystem'
-  config:
-    customSkillDirs:
-      - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"
-
-- id: tool-skill
-  name: '@deepseek-ai/dsh-tool-skill'

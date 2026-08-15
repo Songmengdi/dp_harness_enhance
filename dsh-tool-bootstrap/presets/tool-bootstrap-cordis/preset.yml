@@ -1,0 +1,3 @@
+name: 工具引导创造模式
+description: 创造模式的锚定版(不含 cordis 自省工具):首请求只暴露 shell/read 与 Minimal 锚定句,首个工具调用或助手回复后开放完整目录;原创造模式 system prompt 以 persona context 注入。
+order: 8

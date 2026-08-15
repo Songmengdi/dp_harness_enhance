@@ -22,9 +22,18 @@ import { fileURLToPath } from 'node:url'
 export const projectDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const presetsRoot = join(projectDir, 'presets')
 
-/** Replace the plugin row's module token with the built entry path. */
-export function substitute(composition, libEntry = resolve(projectDir, 'lib/index.js')) {
-  return composition.replace('name: __TOOL_BOOTSTRAP_LIB__', `name: ${libEntry}`)
+/** 默认不安装的 preset id(代码保留,作为可选实验变体)。 */
+export const SKIPPED_PRESET_IDS = ['tool-bootstrap-zero-standard']
+
+/**
+ * Replace the plugin row's module token.
+ * - dev mode(default): the built entry path in this checkout;
+ * - release mode(SYNC_RELEASE=1 / release: true): the published package name,
+ *   resolved from the profile where `dsh plugin add` installed the tag.
+ */
+export function substitute(composition, libEntry = resolve(projectDir, 'lib/index.js'), release = process.env.SYNC_RELEASE === '1') {
+  const specifier = release ? 'dsh-tool-bootstrap' : libEntry
+  return composition.replace('name: __TOOL_BOOTSTRAP_LIB__', `name: ${specifier}`)
 }
 
 export async function listPresetIds() {
@@ -36,6 +45,7 @@ export async function syncPreset({
   dshHome = process.env.DSH_HOME ?? join(homedir(), '.dsh'),
   presetId,
   libEntry,
+  release = process.env.SYNC_RELEASE === '1',
 } = {}) {
   const source = join(presetsRoot, presetId)
   const target = join(dshHome, '.agent-presets', presetId)
@@ -43,7 +53,7 @@ export async function syncPreset({
     readFile(join(source, 'agent.cordis.yml'), 'utf8'),
     mkdir(target, { recursive: true }),
   ])
-  await writeFile(join(target, 'agent.cordis.yml'), substitute(composition, libEntry))
+  await writeFile(join(target, 'agent.cordis.yml'), substitute(composition, libEntry, release))
   for (const entry of await readdir(source)) {
     if (entry === 'agent.cordis.yml') continue
     const from = join(source, entry)
@@ -55,12 +65,17 @@ export async function syncPreset({
 }
 
 export async function syncAllPresets(options = {}) {
-  const ids = await listPresetIds()
+  const includeSkipped = options.includeSkipped === true || process.env.SYNC_ZERO_PRESET === '1'
+  const ids = (await listPresetIds()).filter((presetId) => includeSkipped || !SKIPPED_PRESET_IDS.includes(presetId))
   return Promise.all(ids.map((presetId) => syncPreset({ ...options, presetId })))
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const targets = await syncAllPresets()
-  console.log(`synced ${targets.length} anchored preset(s) -> ${join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), '.agent-presets')}`)
-  console.log(`plugin row -> ${resolve(projectDir, 'lib/index.js')}`)
+  const mode = process.env.SYNC_RELEASE === '1' ? 'release (dsh-tool-bootstrap package)' : 'dev (checkout lib path)'
+  console.log(`synced ${targets.length} tool-bootstrap preset(s) -> ${join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), '.agent-presets')}`)
+  console.log(`mode: ${mode}`)
+  if (process.env.SYNC_ZERO_PRESET !== '1') {
+    console.log(`skipped: ${SKIPPED_PRESET_IDS.join(', ')} (set SYNC_ZERO_PRESET=1 to include)`)
+  }
 }

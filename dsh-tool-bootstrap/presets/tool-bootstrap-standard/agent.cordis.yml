@@ -1,10 +1,11 @@
-# The `anchored-standard` user preset: the Standard catalog with the Minimal
+# The `tool-bootstrap-standard` user preset: the Standard catalog with the Minimal
 # persona and a two-tool bootstrap gate on the first model request.
 #
 # 派生说明:
-# - 组合对齐 xiaobright/dsh-anchored-standard 的锚定配方:prewarm 回合(插件自动
-#   以 `ls` 消息驱动的 turn 1)只暴露当前平台 shell + read;回合结束后开放
-#   Standard 完整工具目录,用户的真实消息从 turn 2 开始。
+# - 组合对齐 xiaobright/dsh-anchored-standard 的锚定配方与加载过程(不预发消息):
+#   用户第一条消息就是 request #1,首次模型请求只暴露当前平台 shell + read;
+#   首个持久 tool/call 或 assistant/message 一落盘,同一回合的下一步即开放
+#   Standard 完整工具目录并恢复 AGENTS.md / skill catalog。
 # - 工具清单为本地 harness 0.1.0-rc.6(@ 4dacfe77a24dead72de749c0876028b77b99cd04)
 #   随附 `standard` preset 的完整快照;升级 harness 后先对照上游改动再继续使用。
 # - `tool-bootstrap` 行保持在组合第一位;它的 agent/pre-step 监听以 prepend 注册,
@@ -30,32 +31,33 @@
 
 # ── bootstrap (must stay FIRST) ─────────────────────────────────────────────
 
-# 必须保持第一行;预热回合由本插件驱动(ls),promoteOn=first-turn-complete 让
-# 整个 turn 1 停留在 bootstrap 目录,用户真实消息所在的 turn 2 才开放完整目录。
+# 必须保持第一行;promoteOn=either 对齐上游加载过程:用户第一条消息就是首次请求,
+# 首个 tool/call 或 assistant/message 后同一回合即开放完整目录。
 - id: tool-bootstrap
   name: __TOOL_BOOTSTRAP_LIB__
   config:
     shellTools: [bash, pwsh]
     alwaysTools: [read]
-    promoteOn: first-turn-complete
+    promoteOn: either
     bootstrapMaxTokens: 1024
-    prewarm: true
-    prewarmMessage: Run the bash command ls and reply with exactly the word done.
+    prewarm: false
     prewarmPersona: You are a helpful software engineer assistant.
 
 # ── identity ────────────────────────────────────────────────────────────────
 
-# 与 Minimal preset 逐字节一致:complete 让首轮 system prompt 保持这一句话,
+# 原 Standard 模式的 persona(与官方 standard preset 一致):system prompt 由
+# tool-bootstrap 全程压成 Minimal 锚定句,这份原 system prompt(harness identity
+# + 本 persona + 工具使用指导)在晋升后作为 persona context 消息注入。
 # includeRuntimeContext:false 关闭运行时 context 注入。
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: You are a helpful software engineer assistant.
-    complete: true
+    text: >-
+      You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
     includeRuntimeContext: false
 
-# 不挂 agent-instructions 行:rc.6 中该监听器恒定位于 pre-step 瀑布外层,首请求
-# 无法被本插件剥离;AGENTS.md 改由 tool-bootstrap 在晋升后自行注入。
+# 不挂 agent-instructions 行:rc.6 中该监听器位于 pre-step 瀑布,本插件以 prepend
+# 注册做最终过滤;AGENTS.md 改由 tool-bootstrap 在晋升后自行注入。
 
 # ── shell ───────────────────────────────────────────────────────────────────
 

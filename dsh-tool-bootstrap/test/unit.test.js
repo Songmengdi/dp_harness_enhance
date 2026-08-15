@@ -44,7 +44,7 @@ async function request(listener, events, resolved, id = 'session-a') {
 }
 
 async function preStep(listener, events, messages, id = 'session-a') {
-  return listener({ agent: fakeAgent(events, id), turn: 1, step: 1 }, async () => ({ kind: 'enter', messages }))
+  return listener({ agent: fakeAgent(events, id), messages, turn: 1, step: 1 }, async () => ({ kind: 'enter', messages }))
 }
 
 const TOOLS = [
@@ -108,14 +108,61 @@ test('promoteOn first-turn-complete keeps the bootstrap catalog until a durable 
   assert.deepEqual(after.tools, TOOLS)
 })
 
-test('enabling prewarm defaults promoteOn to first-turn-complete', async () => {
+test('prewarm keeps the upstream promotion timing and the anchor system prompt', async () => {
   const { listener } = listenerFor('system-prompt/assemble', { ...BASE, prewarm: true, prewarmMessage: 'warm up' })
-  const during = await assemble(listener, [{ type: 'tool/call' }], TOOLS)
+  const during = await assemble(listener, [], TOOLS)
   assert.deepEqual(during.tools.map((tool) => tool.name), ['bash', 'read'])
   assert.deepEqual(during.sections.map((section) => section.text), ['You are a helpful software engineer assistant.'])
+  // 对齐上游:首个 tool/call(或 assistant/message)即晋升,而不是等 turn/end。
+  const after = await assemble(listener, [{ type: 'tool/call' }], TOOLS)
+  assert.deepEqual(after.tools, TOOLS)
+  // 晋升后 system prompt 仍保持锚定句;原 prompt 改由 pre-step 以 context 注入。
+  assert.deepEqual(after.sections.map((section) => section.text), ['You are a helpful software engineer assistant.'])
+})
+
+test('an explicit first-turn-complete still gates the whole prewarm turn', async () => {
+  const { listener } = listenerFor('system-prompt/assemble', {
+    ...BASE,
+    prewarm: true,
+    prewarmMessage: 'warm up',
+    promoteOn: 'first-turn-complete',
+  })
+  const during = await assemble(listener, [{ type: 'tool/call' }], TOOLS)
+  assert.deepEqual(during.tools.map((tool) => tool.name), ['bash', 'read'])
   const after = await assemble(listener, [{ type: 'turn/end' }], TOOLS)
   assert.deepEqual(after.tools, TOOLS)
-  assert.deepEqual(after.sections.map((section) => section.text), [ORIGINAL_PERSONA])
+})
+
+test('prewarm keeps the anchor system prompt through promotion and the original goes to context', async () => {
+  const { listeners } = listenersFor({ ...BASE, prewarm: true, prewarmMessage: 'warm up' })
+  const assembleListener = listeners['system-prompt/assemble']
+  const sections = [
+    { name: 'deployment:persona', text: ORIGINAL_PERSONA },
+    { name: 'some:other', text: 'guidance' },
+  ]
+  await assemble(assembleListener, [], TOOLS, 'session-a', sections)
+  const promoted = await assemble(assembleListener, [{ type: 'tool/call' }], TOOLS, 'session-a', sections)
+  assert.deepEqual(promoted.sections, [{ name: 'deployment:persona', text: 'You are a helpful software engineer assistant.' }])
+
+  const events = [
+    { type: 'tool/call' },
+    { type: 'user/message', data: { source: { kind: 'agent-instructions' } } },
+  ]
+  const decision = await preStep(listeners['agent/pre-step'], events, [
+    { id: 'm1', content: [], source: { kind: 'user' } },
+  ], 'session-a')
+  const persona = decision.messages.find((message) => (
+    message.source?.kind === 'plugin' && message.source?.form === 'persona'
+  ))
+  assert.ok(persona, 'the original system prompt must be injected as a persona context message')
+  assert.equal(persona.content[0].text, `${ORIGINAL_PERSONA}\n\nguidance`)
+  assert.equal(persona.source.plugin, '@deepseek-ai/dsh-tool-bootstrap')
+
+  // 每会话只注入一次。
+  const second = await preStep(listeners['agent/pre-step'], events, [
+    { id: 'm2', content: [], source: { kind: 'user' } },
+  ], 'session-a')
+  assert.equal(second.messages.filter((message) => message.source?.form === 'persona').length, 0)
 })
 
 test('prewarm collapses the whole system prompt to the configured anchor persona', async () => {
@@ -133,8 +180,10 @@ test('prewarm collapses the whole system prompt to the configured anchor persona
   assert.deepEqual(during.sections, [
     { name: 'deployment:persona', text: 'Anchor persona.' },
   ])
-  const promoted = await assemble(listener, [{ type: 'turn/end' }], TOOLS, 'session-a', sections)
-  assert.deepEqual(promoted.sections, sections)
+  const promoted = await assemble(listener, [{ type: 'tool/call' }], TOOLS, 'session-a', sections)
+  assert.deepEqual(promoted.sections, [
+    { name: 'deployment:persona', text: 'Anchor persona.' },
+  ])
 })
 
 test('an empty prewarmPersona keeps the preset persona during the prewarm turn', async () => {
@@ -146,14 +195,27 @@ test('an empty prewarmPersona keeps the preset persona during the prewarm turn',
   })
   const during = await assemble(listener, [], TOOLS)
   assert.deepEqual(during.sections.map((section) => section.text), [ORIGINAL_PERSONA])
+  const promoted = await assemble(listener, [{ type: 'tool/call' }], TOOLS)
+  assert.deepEqual(promoted.sections.map((section) => section.text), [ORIGINAL_PERSONA])
 })
 
-test('without prewarm the preset persona is never replaced', async () => {
-  const { listener } = listenerFor('system-prompt/assemble', BASE)
-  const bootstrap = await assemble(listener, [], TOOLS)
-  const promoted = await assemble(listener, [{ type: 'tool/call' }], TOOLS)
-  assert.deepEqual(bootstrap.sections.map((section) => section.text), [ORIGINAL_PERSONA])
-  assert.deepEqual(promoted.sections.map((section) => section.text), [ORIGINAL_PERSONA])
+test('without prewarm the anchor persona still governs the system prompt and context injection', async () => {
+  const { listeners } = listenersFor(BASE)
+  const assembleListener = listeners['system-prompt/assemble']
+  const bootstrap = await assemble(assembleListener, [], TOOLS)
+  assert.deepEqual(bootstrap.sections.map((section) => section.text), ['You are a helpful software engineer assistant.'])
+  const promoted = await assemble(assembleListener, [{ type: 'tool/call' }], TOOLS)
+  assert.deepEqual(promoted.sections.map((section) => section.text), ['You are a helpful software engineer assistant.'])
+
+  const events = [
+    { type: 'tool/call' },
+    { type: 'user/message', data: { source: { kind: 'agent-instructions' } } },
+  ]
+  const decision = await preStep(listeners['agent/pre-step'], events, [
+    { id: 'm1', content: [], source: { kind: 'user' } },
+  ], 'session-a')
+  const persona = decision.messages.find((message) => message.source?.form === 'persona')
+  assert.equal(persona.content[0].text, ORIGINAL_PERSONA)
 })
 
 test('an explicit promoteOn still wins when prewarm is enabled', async () => {
@@ -166,6 +228,45 @@ test('an assembly without an agent is left untouched', async () => {
   const { listener } = listenerFor('system-prompt/assemble')
   const result = await listener(undefined, {}, async () => ({ tools: TOOLS }))
   assert.deepEqual(result.tools, TOOLS)
+})
+
+test('zeroTools strips the whole bootstrap catalog', async () => {
+  const { listener } = listenerFor('system-prompt/assemble', { ...BASE, zeroTools: true })
+  const before = await assemble(listener, [], TOOLS)
+  assert.deepEqual(before.tools, [])
+  const after = await assemble(listener, [{ type: 'assistant/message' }], TOOLS)
+  assert.deepEqual(after.tools, TOOLS)
+})
+
+test('anchorMessage prepends one plugin-sourced anchor before the first real message', async () => {
+  const { listener } = listenerFor('agent/inbox/inserted', { ...BASE, anchorMessage: 'zero-tool anchor' })
+  const prepended = []
+  const agent = {
+    session: { id: 'session-anchor', events: [], header: {} },
+    inbox: { prepend(target, message) { prepended.push({ target, message }) } },
+  }
+  listener({ agent, message: { content: [], source: { kind: 'user' } } })
+  assert.equal(prepended.length, 1)
+  assert.equal(prepended[0].target, 'next-turn')
+  assert.equal(prepended[0].message.content[0].text, 'zero-tool anchor')
+  assert.equal(prepended[0].message.source.kind, 'plugin')
+  assert.equal(prepended[0].message.source.form, 'anchor')
+
+  // 同一会话只锚定一次;plugin 来源消息也不触发。
+  listener({ agent, message: { content: [], source: { kind: 'user' } } })
+  listener({ agent, message: { content: [], source: { kind: 'plugin' } } })
+  assert.equal(prepended.length, 1)
+})
+
+test('anchorMessage skips subagents and sessions that already have user messages', async () => {
+  const { listener } = listenerFor('agent/inbox/inserted', { ...BASE, anchorMessage: 'anchor' })
+  const prepended = []
+  const inbox = { prepend(_target, message) { prepended.push(message) } }
+  const subagent = { session: { id: 's-sub', events: [], header: { delegationDepth: 1 } }, inbox }
+  const busy = { session: { id: 's-busy', events: [{ type: 'user/message' }], header: {} }, inbox }
+  listener({ agent: subagent, message: { source: { kind: 'user' } } })
+  listener({ agent: busy, message: { source: { kind: 'user' } } })
+  assert.equal(prepended.length, 0)
 })
 
 test('bootstrapTools overrides the shell/read derivation', async () => {

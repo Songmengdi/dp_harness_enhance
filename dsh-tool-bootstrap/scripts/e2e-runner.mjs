@@ -18,7 +18,7 @@
  *
  * Targeted preset and expectations come from the environment:
  *   E2E_PRESET_ID          preset id under ~/.dsh/.agent-presets
- *                          (default anchored-standard)
+ *                          (default tool-bootstrap-standard)
  *   E2E_BOOTSTRAP          comma-separated first-header tool names
  *                          (default bash,read)
  *   E2E_FULL_INCLUDES      comma-separated names the promoted catalog must
@@ -37,6 +37,15 @@
  *   E2E_TURN2_SYSTEM_CONTAINS
  *                          substring any promoted system prompt must contain;
  *                          when unset, promoted systems must equal turn 1
+ *   E2E_PERSONA_CONTEXT_CONTAINS
+ *                          the original system prompt is loaded as a persona
+ *                          context message after promotion; set this to a
+ *                          substring that message must contain
+ *   E2E_ZERO_TOOLS=1       zero-tool anchor mode: the first header must carry
+ *                          zero tools and the first request must run on the
+ *                          anchor message injected ahead of the real one
+ *   E2E_ANCHOR_MESSAGE     exact zero-tool anchor text (default matches the
+ *                          bundled tool-bootstrap-zero-standard preset)
  *
  * Run through the bundled `anchored-e2e` profile:
  *   dsh --profile anchored-e2e "Run the bash command 'echo anchored-e2e-ok' and then reply with exactly the word done."
@@ -47,17 +56,21 @@ export const name = 'anchored-e2e-runner'
 
 export const inject = ['cmdlineArgs', 'agentPresets', 'agents', 'agentDefaultModel', 'sessions']
 
-const PRESET_ID = process.env.E2E_PRESET_ID ?? 'anchored-standard'
+const PRESET_ID = process.env.E2E_PRESET_ID ?? 'tool-bootstrap-standard'
 const SELECT_PATH = process.env.E2E_SELECT_PATH === '1'
 const PRE_SELECT = process.env.E2E_PRE_SELECT
 const PREWARM = process.env.E2E_PREWARM === '1'
 const PREWARM_MESSAGE = process.env.E2E_PREWARM_MESSAGE ?? 'Run the bash command ls and reply with exactly the word done.'
 const PREWARM_TIMEOUT_MS = Number(process.env.E2E_PREWARM_TIMEOUT_MS ?? 180000)
+const ZERO_TOOLS = process.env.E2E_ZERO_TOOLS === '1'
+const ANCHOR_MESSAGE = process.env.E2E_ANCHOR_MESSAGE ?? 'This round is a test. Tools are not open yet; all tools will open next round.'
 const DEFAULT_TURN1_SYSTEM = 'You are a helpful software engineer assistant.'
 const TURN1_SYSTEM = process.env.E2E_TURN1_SYSTEM
 const TURN1_SYSTEM_CONTAINS = process.env.E2E_TURN1_SYSTEM_CONTAINS
 const TURN2_SYSTEM_CONTAINS = process.env.E2E_TURN2_SYSTEM_CONTAINS
-const BOOTSTRAP = (process.env.E2E_BOOTSTRAP ?? 'bash,read').split(',').map((s) => s.trim()).filter(Boolean).sort()
+const PERSONA_CONTEXT_CONTAINS = process.env.E2E_PERSONA_CONTEXT_CONTAINS
+const BOOTSTRAP = (ZERO_TOOLS && process.env.E2E_BOOTSTRAP === undefined ? '' : process.env.E2E_BOOTSTRAP ?? 'bash,read')
+  .split(',').map((s) => s.trim()).filter(Boolean).sort()
 const FULL_INCLUDES = (process.env.E2E_FULL_INCLUDES ?? 'write').split(',').map((s) => s.trim()).filter(Boolean)
 
 export function apply(ctx) {
@@ -178,9 +191,8 @@ async function run(ctx, task) {
     }))
   const firstHeader = headers[0]
   const promotedHeaders = headers.slice(1)
-  const promotionEvent = (event) => PREWARM
-    ? event.type === 'turn/end'
-    : event.type === 'tool/call' || event.type === 'assistant/message'
+  // 对齐上游加载过程:首个持久 tool/call 或 assistant/message 即晋升(两模式一致)。
+  const promotionEvent = (event) => event.type === 'tool/call' || event.type === 'assistant/message'
   const firstPromotionIndex = events.findIndex(promotionEvent)
   const prePromotionMessages = events
     .filter((event) => event.type === 'user/message' && event.seq < (firstPromotionIndex === -1 ? Infinity : events[firstPromotionIndex].seq))
@@ -190,7 +202,19 @@ async function run(ctx, task) {
     .map((event) => event.data)
   const prePromotionKinds = [...new Set(prePromotionMessages.map((message) => message.source?.kind))]
   const allMessageKinds = [...new Set(allMessages.map((message) => message.source?.kind))]
-  const turn1Messages = userMessagesByTurn[1] ?? []
+  const personaContextMessages = allMessages.filter((message) => (
+    message.source?.kind === 'plugin'
+    && message.source?.plugin === '@deepseek-ai/dsh-tool-bootstrap'
+    && message.source?.form === 'persona'
+  ))
+  const isAnchorMessage = (message) => (
+    message.source?.kind === 'plugin'
+    && message.source?.form === 'anchor'
+    && message.content?.some((part) => part.type === 'text' && part.text === ANCHOR_MESSAGE)
+  )
+  const prePromotionAnchorOk = ZERO_TOOLS
+    && prePromotionMessages.length === 1
+    && isAnchorMessage(prePromotionMessages[0])
 
   const bootstrapShape = JSON.stringify(BOOTSTRAP)
   const fullCheck = (header) => header.tools.length > BOOTSTRAP.length
@@ -207,23 +231,31 @@ async function run(ctx, task) {
     ? promotedHeaders.length > 0 && promotedHeaders.some((header) => header.system.includes(TURN2_SYSTEM_CONTAINS))
     : promotedHeaders.length === 0 || promotedHeaders.every((header) => header.system === firstHeader?.system)
 
+  const isPrewarmMessage = (message) => (
+    message.source?.kind === 'plugin'
+    && message.source?.form === 'prewarm'
+    && message.content?.some((part) => part.type === 'text' && part.text === PREWARM_MESSAGE)
+  )
   const prewarmMessageOk = PREWARM
-    && turn1Messages.length === 1
-    && turn1Messages[0].source?.kind === 'user'
-    && turn1Messages[0].content?.some((part) => part.type === 'text' && part.text === PREWARM_MESSAGE)
+    && prePromotionMessages.length === 1
+    && isPrewarmMessage(prePromotionMessages[0])
   const prewarmTurnCalledBootstrapTool = calls.some((call) => call.turn === 1 && BOOTSTRAP.includes(call.name))
+  const personaContextCheck = PERSONA_CONTEXT_CONTAINS
+    ? [[`the original system prompt was loaded as a persona context message (contains ${JSON.stringify(PERSONA_CONTEXT_CONTAINS)})`, personaContextMessages.some((message) => message.content?.some((part) => part.type === 'text' && part.text.includes(PERSONA_CONTEXT_CONTAINS)))]]
+    : []
 
   const checks = []
   if (PREWARM) {
     checks.push(
       [`the prewarm turn completed (turn/end seen)`, prewarmCompleted],
-      [`the prewarm turn ran exactly the configured prewarm message (turn-1 messages: ${JSON.stringify(turn1Messages.map((message) => message.content?.map((part) => part.text)))})`, prewarmMessageOk === true],
+      [`the prewarm turn ran exactly the configured system-injected prewarm message (pre-promotion messages: ${JSON.stringify(prePromotionMessages.map((message) => message.content?.map((part) => part.text)))})`, prewarmMessageOk === true],
       [`the prewarm turn made a bootstrap tool call (calls: ${JSON.stringify(calls)})`, prewarmTurnCalledBootstrapTool],
       [`the prewarm request stayed on the bootstrap catalog (tools: ${JSON.stringify(firstHeader?.tools)})`, firstHeader !== undefined && JSON.stringify(firstHeader.tools) === bootstrapShape],
       [`the prewarm request ran the expected anchor system prompt (system: ${JSON.stringify(firstHeader?.system)})`, turn1SystemOk],
-      [`the prewarm turn carried no injected reminders (pre-promotion message kinds: ${JSON.stringify(prePromotionKinds)})`, prePromotionMessages.length >= 1 && prePromotionKinds.every((kind) => kind === 'user')],
-      [`the user task ran on the complete catalog (${promotedHeaders.length} later header(s), must include ${JSON.stringify(FULL_INCLUDES)})`, promotedHeaders.length >= 1 && promotedHeaders.every(fullCheck)],
+      [`the prewarm request carried no injected reminders (pre-promotion message kinds: ${JSON.stringify(prePromotionKinds)})`, prePromotionMessages.length === 1 && prePromotionKinds.every((kind) => kind === 'plugin')],
+      [`every later request ran on the complete catalog (${promotedHeaders.length} later header(s), must include ${JSON.stringify(FULL_INCLUDES)})`, promotedHeaders.length >= 1 && promotedHeaders.every(fullCheck)],
       [`later requests kept or restored the expected system prompt (systems: ${JSON.stringify([...new Set(promotedHeaders.map((header) => header.system))])})`, promotedSystemOk],
+      ...personaContextCheck,
       [`later requests restored AGENTS.md and skill-catalog context (message kinds: ${JSON.stringify(allMessageKinds)})`, ['agent-instructions', 'skill-catalog'].every((kind) => allMessageKinds.includes(kind))],
       [`at least two turns completed (turn/end count: ${events.filter((event) => event.type === 'turn/end').length})`, events.filter((event) => event.type === 'turn/end').length >= 2],
     )
@@ -231,10 +263,15 @@ async function run(ctx, task) {
     checks.push(
       [`the first request stayed on the bootstrap catalog (tools: ${JSON.stringify(firstHeader?.tools)})`, firstHeader !== undefined && JSON.stringify(firstHeader.tools) === bootstrapShape],
       [`the first request ran on the anchor persona (system: ${JSON.stringify(firstHeader?.system)})`, turn1SystemOk],
-      [`the first turn made a durable tool call or assistant message (calls: ${JSON.stringify(calls)})`, calls.length >= 1],
-      [`the first request carried no injected reminders (pre-promotion message kinds: ${JSON.stringify(prePromotionKinds)})`, prePromotionMessages.length >= 1 && prePromotionKinds.every((kind) => kind === 'user')],
+      ...(ZERO_TOOLS
+        ? [[`the zero-tool anchor message ran as the first request (pre-promotion messages: ${JSON.stringify(prePromotionMessages.map((message) => message.content?.map((part) => part.text)))})`, prePromotionAnchorOk === true]]
+        : [[`the first turn made a durable tool call or assistant message (calls: ${JSON.stringify(calls)})`, calls.length >= 1]]),
+      ...(ZERO_TOOLS
+        ? [[`the zero-tool anchor request carried no injected reminders (pre-promotion message kinds: ${JSON.stringify(prePromotionKinds)})`, prePromotionMessages.length === 1 && prePromotionKinds.every((kind) => kind === 'plugin')]]
+        : [[`the first request carried no injected reminders (pre-promotion message kinds: ${JSON.stringify(prePromotionKinds)})`, prePromotionMessages.length >= 1 && prePromotionKinds.every((kind) => kind === 'user')]]),
       [`every later request ran on the complete catalog (${promotedHeaders.length} later header(s), must include ${JSON.stringify(FULL_INCLUDES)})`, promotedHeaders.length >= 1 && promotedHeaders.every(fullCheck)],
       [`later requests kept or restored the expected system prompt (systems: ${JSON.stringify([...new Set(promotedHeaders.map((header) => header.system))])})`, promotedSystemOk],
+      ...personaContextCheck,
       [`later requests restored AGENTS.md and skill-catalog context (message kinds: ${JSON.stringify(allMessageKinds)})`, ['agent-instructions', 'skill-catalog'].every((kind) => allMessageKinds.includes(kind))],
       [`at least two turns completed (turn/end count: ${events.filter((event) => event.type === 'turn/end').length})`, events.filter((event) => event.type === 'turn/end').length >= 2],
     )
@@ -247,6 +284,7 @@ async function run(ctx, task) {
     mode: PREWARM ? (SELECT_PATH ? 'prewarm-select-path' : 'prewarm') : (SELECT_PATH ? 'task-select-path' : 'task'),
     headersByTurn: headersByTurn.map((headers) => (headers ?? []).map((header) => ({ tools: header.tools, systemPreview: header.system.slice(0, 80) }))),
     messageKindsByTurn: userMessagesByTurn.map((messages) => (messages ?? []).map((message) => message.source?.kind)),
+    personaContextPreview: personaContextMessages.map((message) => message.content?.find((part) => part.type === 'text')?.text.slice(0, 200)),
     toolCalls: calls,
     checks,
     pass: checks.every(([, ok]) => ok),

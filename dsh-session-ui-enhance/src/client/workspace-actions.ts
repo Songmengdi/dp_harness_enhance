@@ -231,19 +231,27 @@ function createArchiveConfirmButton(row: HTMLElement): HTMLButtonElement {
 }
 
 function closeArchiveConfirm(restoreFocus = false): void {
-  // 键盘路径(Escape):焦点在确认按钮上时收起,交还焦点给归档按钮;
-  // 鼠标路径不抢焦点,避免打断用户正在点击的目标。
-  if (restoreFocus && confirmButton !== null && confirmAnchor !== null
-    && confirmButton.contains(document.activeElement) && confirmAnchor.isConnected) {
-    confirmAnchor.focus()
-  }
-  if (confirmAnchor !== null) confirmAnchor.setAttribute('aria-expanded', 'false')
-  if (confirmButton !== null) {
-    confirmButton.remove()
-    confirmButton = null
-  }
+  const button = confirmButton
+  const anchor = confirmAnchor
+  // 先清状态再动 DOM:remove() 会同步派发 blur/focusout,若此时状态
+  // 还在,监听器会重入并对同一个按钮再次 remove(),抛 NotFoundError。
+  confirmButton = null
   confirmAnchor = null
   confirmRow = null
+  // 键盘路径(Escape):焦点在确认按钮上时收起,交还焦点给归档按钮;
+  // 鼠标路径不抢焦点,避免打断用户正在点击的目标。
+  if (restoreFocus && button !== null && anchor !== null
+    && button.contains(document.activeElement) && anchor.isConnected) {
+    anchor.focus()
+  }
+  if (anchor !== null) anchor.setAttribute('aria-expanded', 'false')
+  if (button !== null) {
+    try {
+      button.remove()
+    } catch {
+      // 焦点事件重入或产品重渲染可能已把它摘掉;这里只求 DOM 不残留。
+    }
+  }
 }
 
 function showArchiveConfirm(row: HTMLElement, anchor: HTMLButtonElement): void {

@@ -7,7 +7,7 @@
  * shared/client-config.ts,由单测断言两者默认值一致(防漂移)。
  */
 import Schema from '@deepseek-ai/schemastery'
-import { CLIENT_DEFAULTS, clientConfigOf, type ClientConfig, type ComposerStyleConfig, type DarkColors, type ProcessCollapseConfig, type ThinkCollapseConfig, type UserBubbleConfig, type WorkspaceActionsConfig } from './shared/client-config.js'
+import { CLIENT_DEFAULTS, clientConfigOf, type ClientConfig, type ComposerStyleConfig, type DarkColors, type ModelSplitConfig, type ProcessCollapseConfig, type ThinkCollapseConfig, type UserBubbleConfig, type WorkspaceActionsConfig } from './shared/client-config.js'
 
 export interface Config {
   /** 适配模式最大展示高度(px) */
@@ -34,6 +34,8 @@ export interface Config {
   userBubble: UserBubbleConfig
   /** 底部输入框(composer)精致化重排 */
   composer: ComposerStyleConfig
+  /** 模型选择与推理等级拆分为输入区两个直接级联的触发按钮 */
+  modelSplit: ModelSplitConfig
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -68,8 +70,12 @@ export const Config: Schema<Config> = Schema.object({
   }),
   composer: Schema.object({
     enabled: Schema.boolean().default(CLIENT_DEFAULTS.composer.enabled),
+    slashTabConfirm: Schema.boolean().default(CLIENT_DEFAULTS.composer.slashTabConfirm),
+  }),
+  modelSplit: Schema.object({
+    enabled: Schema.boolean().default(CLIENT_DEFAULTS.modelSplit.enabled),
   }),
 })
 
 export { CLIENT_DEFAULTS, clientConfigOf }
-export type { ClientConfig, DarkColors, ThinkCollapseConfig, ProcessCollapseConfig, WorkspaceActionsConfig, UserBubbleConfig, ComposerStyleConfig }
+export type { ClientConfig, DarkColors, ThinkCollapseConfig, ProcessCollapseConfig, WorkspaceActionsConfig, UserBubbleConfig, ComposerStyleConfig, ModelSplitConfig }

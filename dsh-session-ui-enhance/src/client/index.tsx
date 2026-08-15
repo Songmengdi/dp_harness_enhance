@@ -12,7 +12,9 @@
  * Think blocks (see think-collapse.ts). User message bubbles get a quiet
  * restyle (smaller radius, compact type, hairline border) plus a collapse
  * toggle for overlong inputs (see user-bubble.ts); the composer card gets a
- * matching restyle with a focus ring (see composer.ts).
+ * matching restyle with a focus ring (see composer.ts), and plain Tab
+ * confirms the highlighted slash-menu candidate through the official Enter
+ * arbitration (see slash-tab.ts).
  *
  * The rail is contributed into the `conversation.session.header.utilities`
  * slot, which ui-conversation declares and owns: this plugin only registers
@@ -36,6 +38,8 @@ import { applyProcessCollapse } from './process-collapse'
 import { applyWorkspaceActions } from './workspace-actions'
 import { applyUserBubble } from './user-bubble'
 import { applyComposerStyle } from './composer'
+import { applyModelSplit } from './model-split'
+import { applySlashTabConfirm } from './slash-tab'
 // Side effect: injects the zcode-style markdown typography restyle (global,
 // non-module CSS — token overrides + table/code-block chrome) as one
 // <style data-plugin> tag that the loader removes on unload.
@@ -301,6 +305,12 @@ export function apply(ctx: ClientContext): void {
   applyUserBubble(ctx)
   // Composer card restyle gate (see composer.ts).
   applyComposerStyle(ctx)
+  // Plain Tab in an open slash menu confirms the highlighted skill/command
+  // through the official Enter arbitration (see slash-tab.ts).
+  applySlashTabConfirm(ctx)
+  // Split the model selector and reasoning-effort selector into two direct
+  // cascading triggers in the composer tool row (see model-split.tsx).
+  applyModelSplit(ctx)
   ctx.slots.inject('conversation.session.header.utilities', () => {
     const dispose = ctx.slots.register({
       name: 'conversation.session.header.utilities',

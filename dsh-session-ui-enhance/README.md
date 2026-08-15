@@ -8,16 +8,18 @@ dsh Web GUI 会话优化插件:
 - **Mermaid 图渲染**(自 v1.2.0 起融合内建,原独立插件 `dsh-mermaid-renderer` 已废弃;v1.3.0 起改为**浏览器本地渲染**):会话内 ```` ```mermaid ```` 代码块在流式输出中 fence 一闭合即原位替换为可交互 SVG 卡片(适配/缩放/平移、源码查看、复制、重试),跟随 GUI 主题(深色自动切 mermaid dark theme 并按调色板重着色);mermaid.js 内联进 client bundle,**零网络依赖**
 - **思考块底部收起**(自 v1.4.0 起):展开的 Think 折叠行内容无界增长,流式思考时头部收起控件被顶出视口;本插件在「展开的、够高的」思考块正文底部注入一条安静的「收起」小字行(**整行可点**,三级墨色,hover 深一档并垫产品同款悬停底色,无动画)——点击等效于点头部行(转发原生 click 给产品的 `[data-disclosure-row]`,不接管展开状态),随后把块头滚回视口保住阅读位置。显示阈值由 `thinkCollapse.minBodyHeight`(默认 320px)控制,`thinkCollapse.enabled: false` 可整体关闭
 - **轮次过程折叠(zcode 式,自 v1.4.0 起)**:轮次定稿(出现 turn-tail)且无错后,把「最终响应」之外的中间过程——思考行、工具卡片、重试行、上下文提醒——折叠成一条安静的「过程细节 N 项」小字行(整行可点、Enter/Space 可达、按轮次 id 记忆展开状态);展开的过程区够高(默认 480px,`processCollapse.bottomToggleMinHeight` 可调)时,底部再出现一条同款「收起过程」行,读完不必滚回顶部,点击后折叠行自动滚回视口。最终响应 = 组内最后一个非空 assistant-step(其内部思考行也折叠,正文/图片/mermaid 卡片保留)。简单问答轮无过程可折,不出现折叠行;流式中的轮次绝不折叠;出错的轮次保留过程便于排查。`processCollapse.enabled: false` 可整体关闭
-- **工作区会话行操作(自 v1.5.0 起;v1.7.0 起归档增加确认步骤)**:左侧工作区单个会话行的「...」按钮替换为**归档按钮**(同款图标按钮样式;单击不再直接归档,而是在归档图标所在的位置叠上红色小「确认」按钮,确认后才归档;点击其他区域、`Escape`、滚动/失焦、鼠标移出该会话行即收起,下次悬停重新展示归档按钮;当前会话归档后产品自动清空选中);原菜单中的另外两项——**重命名 / 分叉会话**——改为**右键会话行**弹出本插件的上下文菜单,选择后走同一转发路径打开产品原生对话框/行为。产品 ui-workspace 的会话行没有行级 slot,本特性沿用插件既有 DOM 增强模式(隐藏原按钮 + 注入归档按钮,程序化转发原生 click 复用产品 handler,不接管会话状态);文案跟随产品 locale,卸载时自动还原原「...」按钮。`workspaceActions.enabled: false` 可整体关闭
+- **工作区会话行操作(自 v1.5.0 起;v1.7.0 起归档增加确认步骤)**:左侧工作区单个会话行的「...」按钮替换为**归档按钮**(同款图标按钮样式;单击不再直接归档,而是在归档图标所在的位置叠上红色小「确认」按钮,确认后才归档;点击其他区域、`Escape`、滚动/失焦即收起(鼠标移出该会话行**不**收起——确认态期间给行打 `data-z-session-confirm-open`,CSS 强制行操作区保持可见,确认按钮原地停驻);当前会话归档后产品自动清空选中);原菜单中的另外两项——**重命名 / 分叉会话**——改为**右键会话行**弹出本插件的上下文菜单,选择后走同一转发路径打开产品原生对话框/行为。产品 ui-workspace 的会话行没有行级 slot,本特性沿用插件既有 DOM 增强模式(隐藏原按钮 + 注入归档按钮,程序化转发原生 click 复用产品 handler,不接管会话状态);文案跟随产品 locale,卸载时自动还原原「...」按钮。`workspaceActions.enabled: false` 可整体关闭
 - **用户消息气泡精致化 + 超长收缩**(自 v1.6.0 起):22px 大圆角灰块重排为 14px 小圆角(右下 6px 尾角,保留聊天气泡的方向感)、14/22 紧凑字号(与会话正文尺度对齐)、补一道细描边;超长输入(粘贴日志/长需求)超过 `userBubble.collapseHeight`(默认 160px,含 24px 缓冲避免刚超一行的尴尬折叠)即收缩为 max-height 截断 + 底部同底色渐变淡出,气泡下方出现安静的「展开全部/收起」小字按钮(按气泡记忆展开选择,重排版不重置;pending 中的 steering 气泡不折叠)。`userBubble.enabled: false` 可整体关闭
 - **底部输入框(composer)精致化**(自 v1.6.0 起):卡片 22px 大圆角收成 16px、字号 16/24 压到 14/22、顶部留白与内容区间距收紧;`:focus-within` 时描边换主色并加一圈 12% 主色柔和光晕——输入中状态第一次有了视觉反馈。纯 CSS 挂在产品稳定属性 `[data-composer-card]` 上,全部走 `--dsw-alias-*` token 亮暗自适应。`composer.enabled: false` 可整体关闭
+- **斜杠候选菜单 Tab 确认**(自 v1.8.1 起):输入 `/技能名` 等斜杠触发词出现候选菜单后,按普通 **Tab** 直接等效回车——把当前高亮技能/命令上屏,焦点留在输入框,不再被浏览器默认焦点遍历切走;实现上在 document capture 阶段截获 Tab,复用官方 `ctx.inputTriggers` 的 `arbitrate('enter')` 键盘仲裁路径(不模拟鼠标、不碰菜单 DOM),`@` 提及行为保持官方原样。`Shift+Tab` 仍保留反向焦点遍历的逃生通道;`composer.slashTabConfirm: false` 可整体关闭
+- **模型 / 推理等级拆分为输入区直接级联**(自 v1.8.0 起):官方 ui-model-selection 的 composer 触发器把「模型 · 推理等级」并成一个按钮,点开先进入「模型 / 推理等级」二级菜单再各自级联(内部级联)。本插件以 `priority: -1` shadow 同一 `conversation.input.model` single slot(官方条目仍留在 ledger,卸载即自动还原),改成输入区直接放两个并列触发器——模型一个、推理等级一个,各自直接弹出自己的列表(直接级联)。数据与提交完全复用官方 `ctx.modelDirectories` / `ctx.sessions` 的每会话共享目录,`/model` popup 与路由可用性 composer block 行为不变;模型无推理元数据时只显示模型按钮。`modelSplit.enabled: false` 可整体关闭
 - **会话头部单行化 + tabs 居中**(自 v1.4.0 起,`src/client/header.css`,纯 CSS):「对话/轨迹」tabs 脱离文档流、绝对定位于 header 水平中线(header 与内容列同宽同中线,侧栏 panel 开合时同步),标题/模式 chip 居左、动作组居右,header 从 ~76px 收成 ~44px;tab 激活蓝条与 header 分隔线精确贴合(经典顶部导航样式)。只覆盖垂直 padding,左右 padding 留给产品与其他插件(dsh-better-sidebar 在侧栏收起时把 header 右 padding 抬到 78px 为其 fixed 图标组腾位,互不干扰)。`:has(> [role=tablist])` 门禁——仅双 tab 时生效,单 tab 与无头部场景保持产品原样;零 DOM 移动,React 结构不受影响
 
 > 前身是 `dsh-user-turn-rail`,自本版本起更名为 `dsh-session-ui-enhance`;功能不变,包名、组合行 id(`session-ui-enhance`)、client 条目 id 全部换新,旧名包装与新包互不相同,迁移时先 `dsh plugin remove dsh-user-turn-rail` 再按下文安装。
 
-- 运行面:host 半边只持有 mermaid 客户端配置下发一条 route(依赖 `webServer` service,effect 注册、随 fiber 卸载);其余能力(导轨、排版、代码块卡片、mermaid 交互卡片)全部是 browser UI
-- 槽位:导轨注册进 `conversation.session.header.utilities`(由 `@deepseek-ai/dsh-client-ui-conversation` 声明并持有渲染权,本插件只贡献条目,不认领);mermaid 渲染不占用槽位——全局 MutationObserver 直接对代码块做原位 DOM 替换
-- 状态:全部取自框架会话套件(`useSession` / `sessionId`),不读写磁盘、不引入持久化
+- 运行面:host 半边只持有 mermaid 客户端配置下发一条 route(依赖 `webServer` service,effect 注册、随 fiber 卸载);其余能力(导轨、排版、代码块卡片、mermaid 交互卡片、模型/推理等级拆分)全部是 browser UI
+- 槽位:导轨注册进 `conversation.session.header.utilities`(由 `@deepseek-ai/dsh-client-ui-conversation` 声明并持有渲染权,本插件只贡献条目,不认领);模型/推理等级拆分以 `priority: -1` shadow 官方 ui-model-selection 已占用的 `conversation.input.model` single slot(官方条目仍留在 ledger,卸载即恢复);mermaid 渲染不占用槽位——全局 MutationObserver 直接对代码块做原位 DOM 替换
+- 状态:全部取自框架会话套件(`useSession` / `sessionId`)与官方模型目录服务(`ctx.modelDirectories` / `ctx.sessions`),不读写磁盘、不引入持久化
 
 ## 配置(可选)
 
@@ -41,6 +43,9 @@ dsh Web GUI 会话优化插件:
       collapseHeight: 160            # 气泡内容超过该高度(px)收缩为「展开全部」
     composer:
       enabled: true                  # 底部输入框精致化(小圆角/紧凑字号/焦点光晕)
+      slashTabConfirm: true          # 斜杠候选菜单打开时,Tab 等效回车把高亮技能/命令上屏
+    modelSplit:
+      enabled: true                  # 模型/推理等级拆分为输入区两个直接级联按钮
 ```
 
 完整字段见 `src/config.ts`(mermaid 渲染超时护栏、缩放区间、深色调色板、思考块底部收起等,均带默认值)。

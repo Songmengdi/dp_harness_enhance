@@ -8,8 +8,9 @@
  *
  * - 隐藏原「...」按钮(`data-z-session-menu-source` + CSS display:none),
  *   在同容器注入一枚同款样式的归档图标按钮。单击归档按钮不直接归档,
- *   而是在归档图标所在的位置叠上一枚红色「确认」小按钮(点页面其他
- *   区域/Escape/滚动即收起);确认后才程序化 click 原按钮把产品菜单打
+ *   而是在归档图标所在的位置叠上一枚红色「确认」小按钮(确认态期间
+ *   CSS 强制 rowActions 保持可见,鼠标移出该行不收起;点页面其他
+ *   区域/Escape/滚动才收起);确认后才程序化 click 原按钮把产品菜单打
  *   开(菜单项仍是产品自己的 handler),然后点击其中的归档项——归档
  *   逻辑、当前会话清空、失败处理全部由产品承担,本模块不接管任何会话
  *   状态。
@@ -28,10 +29,12 @@
  * 全部摘除、还原原按钮。
  *
  * 归档确认的状态机(产品 rowActions 只在会话行 hover/menuOpen 时显示):
- * - 归档图标可见 → 单击进入「确认态」:红色「确认」按钮叠在图标位置;
+ * - 归档图标可见 → 单击进入「确认态」:红色「确认」按钮叠在图标位置,
+ *   同时给会话行打 `data-z-session-confirm-open`,CSS 强制 rowActions
+ *   保持可见——确认按钮越过 hover 停驻,鼠标移出该行不再收起;
  * - 确认态退出:点「确认」归档、点击其他区域、Escape、滚动/缩放/窗口
- *   失焦、鼠标移出该会话行、键盘焦点移出行,或行/按钮被移除/配置关闭;
- * - 退出即移除确认按钮:归档图标按产品规则在下次 hover 时重新出现,
+ *   失焦、键盘焦点移出行,或行/按钮被移除/配置关闭;
+ * - 退出即移除确认按钮与行标记:rowActions 回到产品的 hover 显示节奏,
  *   确认态绝不残留在不可见的 rowActions 里。
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
@@ -46,6 +49,7 @@ const ROW_ACTIONS_ATTR = 'data-z-session-row-actions'
 const SOURCE_ATTR = 'data-z-session-menu-source'
 const ARCHIVE_ATTR = 'data-z-session-archive'
 const CONFIRM_ATTR = 'data-z-session-archive-confirm'
+const CONFIRM_OPEN_ATTR = 'data-z-session-confirm-open'
 const PUPPET_ATTR = 'data-z-menu-puppet'
 const ARCHIVE_CLASS = 'z-session-archive'
 const CONFIRM_CLASS = 'z-session-archive-confirm'
@@ -233,11 +237,14 @@ function createArchiveConfirmButton(row: HTMLElement): HTMLButtonElement {
 function closeArchiveConfirm(restoreFocus = false): void {
   const button = confirmButton
   const anchor = confirmAnchor
+  const row = confirmRow
   // 先清状态再动 DOM:remove() 会同步派发 blur/focusout,若此时状态
   // 还在,监听器会重入并对同一个按钮再次 remove(),抛 NotFoundError。
   confirmButton = null
   confirmAnchor = null
   confirmRow = null
+  // 摘掉行级确认标记,rowActions 回到产品"仅 hover 可见"的节奏。
+  if (row !== null) row.removeAttribute(CONFIRM_OPEN_ATTR)
   // 键盘路径(Escape):焦点在确认按钮上时收起,交还焦点给归档按钮;
   // 鼠标路径不抢焦点,避免打断用户正在点击的目标。
   if (restoreFocus && button !== null && anchor !== null
@@ -264,6 +271,7 @@ function showArchiveConfirm(row: HTMLElement, anchor: HTMLButtonElement): void {
   confirmAnchor = anchor
   confirmButton = created
   confirmRow = row
+  row.setAttribute(CONFIRM_OPEN_ATTR, '')
   anchor.setAttribute('aria-expanded', 'true')
   positionArchiveConfirm(created, anchor, actions)
 }
@@ -322,6 +330,7 @@ function syncRow(row: HTMLElement): void {
 /** 摘掉本模块在某个会话行留下的注入物,还原原「...」按钮。 */
 function clearRow(row: HTMLElement): void {
   row.removeAttribute(ROW_ATTR)
+  row.removeAttribute(CONFIRM_OPEN_ATTR)
   if (confirmAnchor !== null && row.contains(confirmAnchor)) closeArchiveConfirm()
   for (const btn of Array.from(row.querySelectorAll(`[${ARCHIVE_ATTR}]`))) btn.remove()
   for (const btn of Array.from(row.querySelectorAll(`[${CONFIRM_ATTR}]`))) btn.remove()
@@ -553,16 +562,9 @@ export function applyWorkspaceActions(ctx: ClientContext): void {
         closeContextMenu()
       }
     }
-    // 鼠标移出会话行即取消确认:产品的 rowActions 在非 hover 时会整个
-    // display:none,若只靠点击收起,确认态会残留在不可见容器里,下次
-    // 悬停又突然出现。移出后归档按钮回到"下次 hover 才显示"的产品节奏。
-    const onPointerOut = (event: PointerEvent): void => {
-      if (event.pointerType !== 'mouse' || confirmRow === null) return
-      const row = confirmRow
-      const related = event.relatedTarget
-      if (!(related instanceof Node) || !row.contains(related)) closeArchiveConfirm()
-    }
-    // 键盘路径:焦点移出会话行同样取消确认(产品 rowActions 也不会一直显示)。
+    // 键盘路径:焦点移出会话行同样取消确认(确认按钮只在行内,焦点离开
+    // 行说明用户已转向别处;鼠标移出行不收起——确认态由 CSS 强制可见,
+    // 只等点击其他区域/Escape/滚动才关闭)。
     const onFocusOut = (event: FocusEvent): void => {
       if (confirmRow === null) return
       const row = confirmRow
@@ -591,7 +593,6 @@ export function applyWorkspaceActions(ctx: ClientContext): void {
     })
     document.addEventListener('contextmenu', onContextMenu, true)
     document.addEventListener('pointerdown', onPointerDown, true)
-    document.addEventListener('pointerout', onPointerOut, true)
     document.addEventListener('focusout', onFocusOut, true)
     document.addEventListener('keydown', onKeyDown, true)
     window.addEventListener('scroll', onScrollOrResize, true)
@@ -604,7 +605,6 @@ export function applyWorkspaceActions(ctx: ClientContext): void {
       if (raf !== 0) cancelAnimationFrame(raf)
       document.removeEventListener('contextmenu', onContextMenu, true)
       document.removeEventListener('pointerdown', onPointerDown, true)
-      document.removeEventListener('pointerout', onPointerOut, true)
       document.removeEventListener('focusout', onFocusOut, true)
       document.removeEventListener('keydown', onKeyDown, true)
       window.removeEventListener('scroll', onScrollOrResize, true)
@@ -622,6 +622,9 @@ export function applyWorkspaceActions(ctx: ClientContext): void {
       }
       for (const row of Array.from(document.querySelectorAll(`[${ROW_ATTR}]`))) {
         row.removeAttribute(ROW_ATTR)
+      }
+      for (const row of Array.from(document.querySelectorAll(`[${CONFIRM_OPEN_ATTR}]`))) {
+        row.removeAttribute(CONFIRM_OPEN_ATTR)
       }
     }
   }, 'dsh-session-ui-enhance: workspace actions')

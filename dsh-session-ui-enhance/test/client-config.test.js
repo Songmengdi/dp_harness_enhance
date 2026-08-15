@@ -31,6 +31,8 @@ test('schema 默认值 === CLIENT_DEFAULTS', () => {
   assert.equal(dict.userBubble.dict.enabled.meta.default, CLIENT_DEFAULTS.userBubble.enabled, 'userBubble.enabled 默认值漂移')
   assert.equal(dict.userBubble.dict.collapseHeight.meta.default, CLIENT_DEFAULTS.userBubble.collapseHeight, 'userBubble.collapseHeight 默认值漂移')
   assert.equal(dict.composer.dict.enabled.meta.default, CLIENT_DEFAULTS.composer.enabled, 'composer.enabled 默认值漂移')
+  assert.equal(dict.composer.dict.slashTabConfirm.meta.default, CLIENT_DEFAULTS.composer.slashTabConfirm, 'composer.slashTabConfirm 默认值漂移')
+  assert.equal(dict.modelSplit.dict.enabled.meta.default, CLIENT_DEFAULTS.modelSplit.enabled, 'modelSplit.enabled 默认值漂移')
 })
 
 test('clientConfigOf: 只投影已知字段且深拷贝嵌套配置', () => {
@@ -53,6 +55,10 @@ test('clientConfigOf: 只投影已知字段且深拷贝嵌套配置', () => {
   assert.notEqual(CLIENT_DEFAULTS.userBubble.enabled, false)
   projected.composer.enabled = false
   assert.notEqual(CLIENT_DEFAULTS.composer.enabled, false)
+  projected.composer.slashTabConfirm = false
+  assert.notEqual(CLIENT_DEFAULTS.composer.slashTabConfirm, false)
+  projected.modelSplit.enabled = false
+  assert.notEqual(CLIENT_DEFAULTS.modelSplit.enabled, false)
 })
 
 test('sanitizeClientConfig: 非对象输入回退默认值', () => {
@@ -73,7 +79,8 @@ test('sanitizeClientConfig: 逐字段类型清洗,坏字段回退', () => {
     processCollapse: { enabled: 0, bottomToggleMinHeight: 600 },
     workspaceActions: { enabled: 1 },
     userBubble: { enabled: 'yes', collapseHeight: 200 },
-    composer: { enabled: 0 },
+    composer: { enabled: 0, slashTabConfirm: false },
+    modelSplit: { enabled: 'yes' },
   })
   assert.equal(cleaned.fitMaxHeight, 999)
   assert.equal(cleaned.zoomBoxHeight, CLIENT_DEFAULTS.zoomBoxHeight)
@@ -91,6 +98,8 @@ test('sanitizeClientConfig: 逐字段类型清洗,坏字段回退', () => {
   assert.equal(cleaned.userBubble.enabled, CLIENT_DEFAULTS.userBubble.enabled)
   assert.equal(cleaned.userBubble.collapseHeight, 200)
   assert.equal(cleaned.composer.enabled, CLIENT_DEFAULTS.composer.enabled)
+  assert.equal(cleaned.composer.slashTabConfirm, false)
+  assert.equal(cleaned.modelSplit.enabled, CLIENT_DEFAULTS.modelSplit.enabled)
 })
 
 test('sanitizeClientConfig: 旧版 host 快照缺新字段时回退默认值', () => {
@@ -100,10 +109,12 @@ test('sanitizeClientConfig: 旧版 host 快照缺新字段时回退默认值', (
   delete legacy.workspaceActions
   delete legacy.userBubble
   delete legacy.composer
+  delete legacy.modelSplit
   const cleaned = sanitizeClientConfig(legacy)
   assert.deepEqual(cleaned.thinkCollapse, CLIENT_DEFAULTS.thinkCollapse)
   assert.deepEqual(cleaned.processCollapse, CLIENT_DEFAULTS.processCollapse)
   assert.deepEqual(cleaned.workspaceActions, CLIENT_DEFAULTS.workspaceActions)
   assert.deepEqual(cleaned.userBubble, CLIENT_DEFAULTS.userBubble)
   assert.deepEqual(cleaned.composer, CLIENT_DEFAULTS.composer)
+  assert.deepEqual(cleaned.modelSplit, CLIENT_DEFAULTS.modelSplit)
 })

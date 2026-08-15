@@ -26,6 +26,20 @@
   position: relative;
 }
 
+/*
+ * 确认态停驻:产品的 rowActions 只在会话行 hover/menuOpen 时 display:inline-flex
+ * (纯 :hover CSS,无 DOM 变更)。确认态期间给会话行打 data-z-session-confirm-open,
+ * 这里强制 rowActions 保持可见并继续隐藏时间戳——鼠标移出该行确认按钮不收起,
+ * 只等点击其他区域/Escape/滚动才关闭,避免确认态残留在不可见容器里。
+ */
+[class*="_sessionRow"][data-z-session-confirm-open] > [class*="_rowActions"] {
+  display: inline-flex !important;
+}
+
+[class*="_sessionRow"][data-z-session-confirm-open] > [class*="_time"] {
+  display: none !important;
+}
+
 [data-z-menu-puppet] [role="menu"][class*="_portal"] {
   visibility: hidden !important;
 }

@@ -44,9 +44,17 @@ export interface UserBubbleConfig {
   collapseHeight: number
 }
 
-/** 底部输入框(composer)的精致化重排。 */
+/** 底部输入框(composer)的精致化重排与键盘交互。 */
 export interface ComposerStyleConfig {
   /** composer 卡片小圆角/紧凑字号/焦点描边环重排 */
+  enabled: boolean
+  /** 斜杠候选菜单打开时,普通 Tab 等效 Enter 把高亮技能/命令上屏(Shift+Tab 不拦) */
+  slashTabConfirm: boolean
+}
+
+/** 模型选择与推理等级拆分为输入区两个直接级联的触发按钮。 */
+export interface ModelSplitConfig {
+  /** 是否用拆分式「模型 / 推理等级」双按钮接管 composer 模型 seat */
   enabled: boolean
 }
 
@@ -76,6 +84,8 @@ export interface ClientConfig {
   userBubble: UserBubbleConfig
   /** 底部输入框精致化 */
   composer: ComposerStyleConfig
+  /** 模型选择与推理等级拆分(输入区双按钮直接级联) */
+  modelSplit: ModelSplitConfig
 }
 
 /** 轮次过程折叠的可调参数。 */
@@ -128,6 +138,10 @@ export const CLIENT_DEFAULTS: ClientConfig = {
   },
   composer: {
     enabled: true,
+    slashTabConfirm: true,
+  },
+  modelSplit: {
+    enabled: true,
   },
 }
 
@@ -146,6 +160,7 @@ export function clientConfigOf(config: ClientConfig): ClientConfig {
     workspaceActions: { ...config.workspaceActions },
     userBubble: { ...config.userBubble },
     composer: { ...config.composer },
+    modelSplit: { ...config.modelSplit },
   }
 }
 
@@ -180,6 +195,9 @@ export function sanitizeClientConfig(data: unknown): ClientConfig {
   const cp = src.composer !== null && typeof src.composer === 'object'
     ? src.composer as Record<string, unknown>
     : {}
+  const ms = src.modelSplit !== null && typeof src.modelSplit === 'object'
+    ? src.modelSplit as Record<string, unknown>
+    : {}
   return {
     fitMaxHeight: num(src.fitMaxHeight, CLIENT_DEFAULTS.fitMaxHeight),
     zoomBoxHeight: num(src.zoomBoxHeight, CLIENT_DEFAULTS.zoomBoxHeight),
@@ -212,6 +230,10 @@ export function sanitizeClientConfig(data: unknown): ClientConfig {
     },
     composer: {
       enabled: bool(cp.enabled, CLIENT_DEFAULTS.composer.enabled),
+      slashTabConfirm: bool(cp.slashTabConfirm, CLIENT_DEFAULTS.composer.slashTabConfirm),
+    },
+    modelSplit: {
+      enabled: bool(ms.enabled, CLIENT_DEFAULTS.modelSplit.enabled),
     },
   }
 }

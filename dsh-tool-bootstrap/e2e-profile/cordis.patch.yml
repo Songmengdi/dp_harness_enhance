@@ -1,0 +1,41 @@
+# anchored-e2e profile patch: headless-shaped host composition (dsh-base) plus
+# the preset roster row (the CLI injects the shipped agent-presets root; the
+# user root comes from includeUserRoot) and the one-shot repro driver, whose
+# row resolves to this repo's e2e-runner.mjs via the sync script.
+
+- insert:
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: standard
+
+    # The cordis preset's tool-cordis row injects these; in the web profile they
+    # come from dsh-web-app, so the headless e2e composition supplies them here.
+    - id: cordis-host-runner
+      name: '@deepseek-ai/dsh-cordis-host-runner'
+
+    - id: anchored-e2e-runner
+      name: __E2E_RUNNER__
+
+# dsh-web-app moves model-facing rows into presets by disabling the
+# corresponding dsh-base host rows. Mirror that ownership boundary here so
+# the e2e profile catches presets that rely on a host row that the web profile
+# removes. An earlier preset drift (bootstrapTools named a tool the preset forgot to register) was masked by exactly this host row.
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-str-replace-editor
+  disabled: true
+- id: skill-filesystem
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: agent-instructions
+  disabled: true

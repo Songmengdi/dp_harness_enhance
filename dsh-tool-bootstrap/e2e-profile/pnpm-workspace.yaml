@@ -1,0 +1,6 @@
+packages:
+  - .
+
+allowBuilds:
+  node-pty: true
+  protobufjs: true

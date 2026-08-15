@@ -1,0 +1,59 @@
+{
+  "name": "dsh-tool-bootstrap",
+  "version": "0.1.0",
+  "description": "Anchored tool-catalog bootstrap gate for dsh agent presets: the first model request (optionally an automatic prewarm turn) sees one native shell plus a small always-on set and a capped output budget; promotion opens the preset complete catalog.",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "presets/**",
+    "scripts/sync-preset.mjs",
+    "scripts/sync-e2e-profile.mjs",
+    "scripts/e2e-runner.mjs",
+    "README.md"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Songmengdi/dp_harness_enhance.git",
+    "directory": "dsh-tool-bootstrap"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/cordis-plugin-timer": "^1.1.3",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.0-rc.6"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/cordis-plugin-timer": "^1.1.3",
+    "@deepseek-ai/dsh-agent": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-agent-presets": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-scope": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-system-prompt": "0.1.0-rc.6",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.host.json --noEmit",
+    "build": "tsc -p tsconfig.host.json",
+    "prepare": "npm run build",
+    "test": "node --test test/*.test.js",
+    "verify": "npm run typecheck && npm run build && npm run test",
+    "sync:preset": "node scripts/sync-preset.mjs",
+    "sync:e2e-profile": "node scripts/sync-e2e-profile.mjs",
+    "e2e": "npm run build && npm run sync:preset && npm run sync:e2e-profile && dsh --profile anchored-e2e",
+    "dev": "npm run build && npm run sync:preset"
+  }
+}

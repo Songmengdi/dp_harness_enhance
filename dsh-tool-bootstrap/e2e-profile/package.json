@@ -1,0 +1,15 @@
+{
+  "name": "dsh-profile-anchored-e2e",
+  "private": true,
+  "dependencies": {
+    "@deepseek-ai/dsh-agent-presets": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-base": "0.1.0-rc.6"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base"
+      ]
+    }
+  }
+}

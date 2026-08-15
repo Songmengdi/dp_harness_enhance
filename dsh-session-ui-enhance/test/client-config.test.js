@@ -27,6 +27,7 @@ test('schema 默认值 === CLIENT_DEFAULTS', () => {
   }
   assert.equal(dict.processCollapse.dict.enabled.meta.default, CLIENT_DEFAULTS.processCollapse.enabled, 'processCollapse.enabled 默认值漂移')
   assert.equal(dict.processCollapse.dict.bottomToggleMinHeight.meta.default, CLIENT_DEFAULTS.processCollapse.bottomToggleMinHeight, 'processCollapse.bottomToggleMinHeight 默认值漂移')
+  assert.equal(dict.workspaceActions.dict.enabled.meta.default, CLIENT_DEFAULTS.workspaceActions.enabled, 'workspaceActions.enabled 默认值漂移')
 })
 
 test('clientConfigOf: 只投影已知字段且深拷贝嵌套配置', () => {
@@ -43,6 +44,8 @@ test('clientConfigOf: 只投影已知字段且深拷贝嵌套配置', () => {
   assert.notEqual(CLIENT_DEFAULTS.thinkCollapse.enabled, false)
   projected.processCollapse.enabled = false
   assert.notEqual(CLIENT_DEFAULTS.processCollapse.enabled, false)
+  projected.workspaceActions.enabled = false
+  assert.notEqual(CLIENT_DEFAULTS.workspaceActions.enabled, false)
 })
 
 test('sanitizeClientConfig: 非对象输入回退默认值', () => {
@@ -61,6 +64,7 @@ test('sanitizeClientConfig: 逐字段类型清洗,坏字段回退', () => {
     darkColors: { shape: '#fff', text: 7 },
     thinkCollapse: { enabled: 'yes', minBodyHeight: 480 },
     processCollapse: { enabled: 0, bottomToggleMinHeight: 600 },
+    workspaceActions: { enabled: 1 },
   })
   assert.equal(cleaned.fitMaxHeight, 999)
   assert.equal(cleaned.zoomBoxHeight, CLIENT_DEFAULTS.zoomBoxHeight)
@@ -74,13 +78,16 @@ test('sanitizeClientConfig: 逐字段类型清洗,坏字段回退', () => {
   assert.equal(cleaned.thinkCollapse.minBodyHeight, 480)
   assert.equal(cleaned.processCollapse.enabled, CLIENT_DEFAULTS.processCollapse.enabled)
   assert.equal(cleaned.processCollapse.bottomToggleMinHeight, 600)
+  assert.equal(cleaned.workspaceActions.enabled, CLIENT_DEFAULTS.workspaceActions.enabled)
 })
 
 test('sanitizeClientConfig: 旧版 host 快照缺新字段时回退默认值', () => {
   const legacy = { ...CLIENT_DEFAULTS }
   delete legacy.thinkCollapse
   delete legacy.processCollapse
+  delete legacy.workspaceActions
   const cleaned = sanitizeClientConfig(legacy)
   assert.deepEqual(cleaned.thinkCollapse, CLIENT_DEFAULTS.thinkCollapse)
   assert.deepEqual(cleaned.processCollapse, CLIENT_DEFAULTS.processCollapse)
+  assert.deepEqual(cleaned.workspaceActions, CLIENT_DEFAULTS.workspaceActions)
 })

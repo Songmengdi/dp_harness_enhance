@@ -30,6 +30,12 @@ export interface ThinkCollapseConfig {
   minBodyHeight: number
 }
 
+/** 左侧工作区会话行的操作入口改造。 */
+export interface WorkspaceActionsConfig {
+  /** 会话行「...」按钮改为归档按钮,重命名/分叉会话移入右键菜单 */
+  enabled: boolean
+}
+
 /** 下发给浏览器的渲染配置(host Config 的客户端可见子集)。 */
 export interface ClientConfig {
   /** 适配模式的最大展示高度(px) */
@@ -50,6 +56,8 @@ export interface ClientConfig {
   thinkCollapse: ThinkCollapseConfig
   /** 轮次过程折叠(zcode 式) */
   processCollapse: ProcessCollapseConfig
+  /** 工作区会话行操作(归档按钮 + 右键菜单) */
+  workspaceActions: WorkspaceActionsConfig
 }
 
 /** 轮次过程折叠的可调参数。 */
@@ -93,6 +101,9 @@ export const CLIENT_DEFAULTS: ClientConfig = {
     enabled: true,
     bottomToggleMinHeight: 480,
   },
+  workspaceActions: {
+    enabled: true,
+  },
 }
 
 /** 从完整 host 配置投影出客户端子集(host 的 client-config 端点使用)。 */
@@ -107,6 +118,7 @@ export function clientConfigOf(config: ClientConfig): ClientConfig {
     darkColors: { ...config.darkColors },
     thinkCollapse: { ...config.thinkCollapse },
     processCollapse: { ...config.processCollapse },
+    workspaceActions: { ...config.workspaceActions },
   }
 }
 
@@ -132,6 +144,9 @@ export function sanitizeClientConfig(data: unknown): ClientConfig {
   const pc = src.processCollapse !== null && typeof src.processCollapse === 'object'
     ? src.processCollapse as Record<string, unknown>
     : {}
+  const wa = src.workspaceActions !== null && typeof src.workspaceActions === 'object'
+    ? src.workspaceActions as Record<string, unknown>
+    : {}
   return {
     fitMaxHeight: num(src.fitMaxHeight, CLIENT_DEFAULTS.fitMaxHeight),
     zoomBoxHeight: num(src.zoomBoxHeight, CLIENT_DEFAULTS.zoomBoxHeight),
@@ -154,6 +169,9 @@ export function sanitizeClientConfig(data: unknown): ClientConfig {
     processCollapse: {
       enabled: bool(pc.enabled, CLIENT_DEFAULTS.processCollapse.enabled),
       bottomToggleMinHeight: num(pc.bottomToggleMinHeight, CLIENT_DEFAULTS.processCollapse.bottomToggleMinHeight),
+    },
+    workspaceActions: {
+      enabled: bool(wa.enabled, CLIENT_DEFAULTS.workspaceActions.enabled),
     },
   }
 }

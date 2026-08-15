@@ -7,7 +7,7 @@
  * shared/client-config.ts,由单测断言两者默认值一致(防漂移)。
  */
 import Schema from '@deepseek-ai/schemastery'
-import { CLIENT_DEFAULTS, clientConfigOf, type ClientConfig, type DarkColors, type ProcessCollapseConfig, type ThinkCollapseConfig } from './shared/client-config.js'
+import { CLIENT_DEFAULTS, clientConfigOf, type ClientConfig, type DarkColors, type ProcessCollapseConfig, type ThinkCollapseConfig, type WorkspaceActionsConfig } from './shared/client-config.js'
 
 export interface Config {
   /** 适配模式最大展示高度(px) */
@@ -28,6 +28,8 @@ export interface Config {
   thinkCollapse: ThinkCollapseConfig
   /** 轮次过程折叠(定稿后中间过程收成「过程细节」一行,zcode 式) */
   processCollapse: ProcessCollapseConfig
+  /** 工作区会话行操作(「...」改为归档按钮,重命名/分叉移入右键菜单) */
+  workspaceActions: WorkspaceActionsConfig
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -53,7 +55,10 @@ export const Config: Schema<Config> = Schema.object({
     enabled: Schema.boolean().default(CLIENT_DEFAULTS.processCollapse.enabled),
     bottomToggleMinHeight: Schema.number().min(160).max(4000).default(CLIENT_DEFAULTS.processCollapse.bottomToggleMinHeight),
   }),
+  workspaceActions: Schema.object({
+    enabled: Schema.boolean().default(CLIENT_DEFAULTS.workspaceActions.enabled),
+  }),
 })
 
 export { CLIENT_DEFAULTS, clientConfigOf }
-export type { ClientConfig, DarkColors, ThinkCollapseConfig, ProcessCollapseConfig }
+export type { ClientConfig, DarkColors, ThinkCollapseConfig, ProcessCollapseConfig, WorkspaceActionsConfig }

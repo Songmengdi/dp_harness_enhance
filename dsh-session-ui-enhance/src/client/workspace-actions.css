@@ -1,0 +1,73 @@
+/**
+ * dsh-session-ui-enhance — 工作区会话行操作改造的样式(global, non-module)。
+ *
+ * 三件事:
+ * - `[data-z-session-menu-source]` 隐藏产品原「...」按钮(React 只管理
+ *   自己的 props,未知属性不会被重渲染抹掉;隐藏后仍可程序化 click,
+ *   产品 Menu 的 handler 照常工作);
+ * - `[data-z-menu-puppet]` 只在我们自动化原菜单时生效,把 portal 菜单
+ *   设为 visibility:hidden——锚点按钮被隐藏后产品会把菜单摆到左上角,
+ *   这层幕布挡住那"闪一帧";
+ * - `.z-session-context` 是右键菜单:产品 Menu 同款容器指标(4px 内边距、
+ *   12px 圆角、lv3 阴影、specific-menu 底色),菜单项 hover 用产品
+ *   interactive-bg-hover token;亮暗主题全部走 token,不写死颜色。
+ */
+
+[data-z-session-menu-source] {
+  display: none !important;
+}
+
+[data-z-menu-puppet] [role="menu"][class*="_portal"] {
+  visibility: hidden !important;
+}
+
+.z-session-context {
+  position: fixed;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 12px;
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-base));
+  box-shadow: var(--dsw-shadow-lv3);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family);
+}
+
+.z-session-context-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.z-session-context-item:hover,
+.z-session-context-item:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+  outline: none;
+}
+
+.z-session-context-item svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.z-session-context-item:hover svg,
+.z-session-context-item:focus-visible svg {
+  color: var(--dsw-alias-label-primary);
+}

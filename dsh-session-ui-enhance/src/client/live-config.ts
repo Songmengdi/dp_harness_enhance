@@ -9,7 +9,7 @@
  * 原内嵌于 mermaid.ts;自 think-collapse 起多个 client 特性消费同一
  * 份配置,抽为独立模块。
  */
-import { CLIENT_DEFAULTS, sanitizeClientConfig, type ClientConfig } from '../shared/client-config'
+import { CLIENT_DEFAULTS, sanitizeClientConfig, type ClientConfig } from '../shared/client-config.js'
 
 const CONFIG_ENDPOINT = '/plugins/dsh-session-ui-enhance/client-config'
 const CONFIG_FETCH_TIMEOUT_MS = 5000

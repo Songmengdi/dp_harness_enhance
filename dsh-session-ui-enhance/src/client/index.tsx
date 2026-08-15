@@ -30,6 +30,7 @@ import { applyCodeLangTagging } from './code-lang'
 import { applyMermaidRenderer } from './mermaid'
 import { applyThinkCollapse } from './think-collapse'
 import { applyProcessCollapse } from './process-collapse'
+import { applyWorkspaceActions } from './workspace-actions'
 // Side effect: injects the zcode-style markdown typography restyle (global,
 // non-module CSS — token overrides + table/code-block chrome) as one
 // <style data-plugin> tag that the loader removes on unload.
@@ -44,6 +45,9 @@ import './process-collapse.css'
 // title via CSS order, active bar docked onto the header hairline (pure CSS,
 // gated on :has(> [role=tablist]); see header.css).
 import './header.css'
+// Side effect: workspace session-row actions — 「...」 becomes an archive
+// button and rename/fork move to a right-click menu (see workspace-actions.ts).
+import './workspace-actions.css'
 
 /** Required services: the slot registry (provided by the client runtime). */
 export const inject = ['slots']
@@ -276,6 +280,10 @@ export function apply(ctx: ClientContext): void {
   // Fold each finished turn's intermediate process (think rows, tool cards)
   // behind a quiet 「过程细节」toggle, zcode-style (see process-collapse.ts).
   applyProcessCollapse(ctx)
+  // Left-workspace session rows: replace the 「...」 button with one-click
+  // archive and move rename/fork into a right-click menu (see
+  // workspace-actions.ts).
+  applyWorkspaceActions(ctx)
   ctx.slots.inject('conversation.session.header.utilities', () => {
     const dispose = ctx.slots.register({
       name: 'conversation.session.header.utilities',

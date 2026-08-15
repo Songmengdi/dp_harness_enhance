@@ -1,6 +1,6 @@
 {
   "name": "dsh-tool-bootstrap",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Anchored tool-catalog bootstrap gate for dsh agent presets: the first model request (optionally an automatic prewarm turn) sees one native shell plus a small always-on set and a capped output budget; promotion opens the preset complete catalog.",
   "type": "module",
   "main": "lib/index.js",

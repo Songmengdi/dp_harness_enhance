@@ -243,6 +243,32 @@ async function run(ctx, task) {
   const personaContextCheck = PERSONA_CONTEXT_CONTAINS
     ? [[`the original system prompt was loaded as a persona context message (contains ${JSON.stringify(PERSONA_CONTEXT_CONTAINS)})`, personaContextMessages.some((message) => message.content?.some((part) => part.type === 'text' && part.text.includes(PERSONA_CONTEXT_CONTAINS)))]]
     : []
+  const instructionContextMessages = allMessages.filter((message) => message.source?.kind === 'agent-instructions')
+  const instructionContractOk = instructionContextMessages.length >= 1
+    && instructionContextMessages.every((message) => message.source?.form === 'instructions'
+      && message.source?.baseline === true
+      && Array.isArray(message.source?.changes)
+      && message.source.changes.length > 0
+      && message.content?.some((part) => part.type === 'text' && part.text.includes('Instructions from:')))
+  const instructionContextCheck = [[
+    `the restored AGENTS.md context carries the official instructions contract (count: ${instructionContextMessages.length}, changes: ${JSON.stringify(instructionContextMessages.flatMap((message) => message.source?.changes?.map((change) => change.path) ?? []))})`,
+    instructionContractOk,
+  ]]
+  const contextMessages = allMessages.filter((message) => message.source?.kind !== 'user')
+  const contextIdCheck = [[
+    `every injected context message carries a unique durable id (ids: ${JSON.stringify(contextMessages.map((message) => message.id))})`,
+    contextMessages.length > 0
+      && contextMessages.every((message) => typeof message.id === 'string' && message.id.length > 0)
+      && new Set(contextMessages.map((message) => message.id)).size === contextMessages.length,
+  ]]
+  const contextKinds = contextMessages.map((message) => message.source?.kind)
+  const contextOrderCheck = [[
+    `persona context is the first of the three injected contexts (kinds: ${JSON.stringify(contextKinds)})`,
+    contextKinds.length >= 3
+      && contextKinds[0] === 'plugin'
+      && contextKinds[1] === 'skill-catalog'
+      && contextKinds[2] === 'agent-instructions',
+  ]]
 
   const checks = []
   if (PREWARM) {
@@ -257,6 +283,9 @@ async function run(ctx, task) {
       [`later requests kept or restored the expected system prompt (systems: ${JSON.stringify([...new Set(promotedHeaders.map((header) => header.system))])})`, promotedSystemOk],
       ...personaContextCheck,
       [`later requests restored AGENTS.md and skill-catalog context (message kinds: ${JSON.stringify(allMessageKinds)})`, ['agent-instructions', 'skill-catalog'].every((kind) => allMessageKinds.includes(kind))],
+      ...instructionContextCheck,
+      ...contextIdCheck,
+      ...contextOrderCheck,
       [`at least two turns completed (turn/end count: ${events.filter((event) => event.type === 'turn/end').length})`, events.filter((event) => event.type === 'turn/end').length >= 2],
     )
   } else {
@@ -273,6 +302,9 @@ async function run(ctx, task) {
       [`later requests kept or restored the expected system prompt (systems: ${JSON.stringify([...new Set(promotedHeaders.map((header) => header.system))])})`, promotedSystemOk],
       ...personaContextCheck,
       [`later requests restored AGENTS.md and skill-catalog context (message kinds: ${JSON.stringify(allMessageKinds)})`, ['agent-instructions', 'skill-catalog'].every((kind) => allMessageKinds.includes(kind))],
+      ...instructionContextCheck,
+      ...contextIdCheck,
+      ...contextOrderCheck,
       [`at least two turns completed (turn/end count: ${events.filter((event) => event.type === 'turn/end').length})`, events.filter((event) => event.type === 'turn/end').length >= 2],
     )
   }

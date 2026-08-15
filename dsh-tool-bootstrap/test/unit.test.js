@@ -5,6 +5,9 @@
  */
 
 import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 import { apply, name, inject } from '../lib/index.js'
@@ -29,11 +32,12 @@ function listenerFor(event, config = BASE) {
   return { listener: listeners[event], warns }
 }
 
-function fakeAgent(events, id = 'session-a') {
-  return { session: { id, events } }
+function fakeAgent(events, id = 'session-a', header = {}) {
+  return { session: { id, events, header } }
 }
 
 const ORIGINAL_PERSONA = 'Original preset persona.'
+const reminder = (text) => `<system-reminder>\n${text}\n</system-reminder>`
 
 async function assemble(listener, events, tools, id = 'session-a', sections = [{ name: 'deployment:persona', text: ORIGINAL_PERSONA }]) {
   return listener(undefined, { agent: fakeAgent(events, id) }, async () => ({ tools, sections }))
@@ -43,8 +47,8 @@ async function request(listener, events, resolved, id = 'session-a') {
   return listener({ agent: fakeAgent(events, id), turn: 1, step: 1 }, async () => resolved)
 }
 
-async function preStep(listener, events, messages, id = 'session-a') {
-  return listener({ agent: fakeAgent(events, id), messages, turn: 1, step: 1 }, async () => ({ kind: 'enter', messages }))
+async function preStep(listener, events, messages, id = 'session-a', header = {}) {
+  return listener({ agent: fakeAgent(events, id, header), messages, turn: 1, step: 1 }, async () => ({ kind: 'enter', messages }))
 }
 
 const TOOLS = [
@@ -155,7 +159,7 @@ test('prewarm keeps the anchor system prompt through promotion and the original 
     message.source?.kind === 'plugin' && message.source?.form === 'persona'
   ))
   assert.ok(persona, 'the original system prompt must be injected as a persona context message')
-  assert.equal(persona.content[0].text, `${ORIGINAL_PERSONA}\n\nguidance`)
+  assert.equal(persona.content[0].text, reminder(`${ORIGINAL_PERSONA}\n\nguidance`))
   assert.equal(persona.source.plugin, '@deepseek-ai/dsh-tool-bootstrap')
 
   // 每会话只注入一次。
@@ -215,7 +219,7 @@ test('without prewarm the anchor persona still governs the system prompt and con
     { id: 'm1', content: [], source: { kind: 'user' } },
   ], 'session-a')
   const persona = decision.messages.find((message) => message.source?.form === 'persona')
-  assert.equal(persona.content[0].text, ORIGINAL_PERSONA)
+  assert.equal(persona.content[0].text, reminder(ORIGINAL_PERSONA))
 })
 
 test('an explicit promoteOn still wins when prewarm is enabled', async () => {
@@ -348,6 +352,176 @@ test('promoted pre-step keeps skill-catalog and agent-instructions messages', as
   ]
   const decision = await preStep(listener, events, messages)
   assert.deepEqual(decision.messages.map((message) => message.id), ['m1', 'm2', 'm3'])
+})
+
+async function withTempHome(t, callback) {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-tool-bootstrap-home-'))
+  const previousHome = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+  t.after(async () => {
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    await rm(home, { recursive: true, force: true })
+  })
+  return callback(home)
+}
+
+test('promotion injects global and project AGENTS.md as an official instructions baseline', async (t) => {
+  await withTempHome(t, async (home) => {
+    const project = await mkdtemp(join(tmpdir(), 'dsh-tool-bootstrap-project-'))
+    t.after(() => rm(project, { recursive: true, force: true }))
+    const nested = join(project, 'nested')
+    await mkdir(join(project, '.git'))
+    await mkdir(nested)
+    await writeFile(join(home, 'AGENTS.md'), '# Global Rules\n')
+    await writeFile(join(project, 'Agents.md'), '# Project Rules\n')
+
+    const { listener } = listenerFor('agent/pre-step')
+    const decision = await preStep(listener, [{ type: 'tool/call' }], [
+      { id: 'm1', content: [], source: { kind: 'user' } },
+    ], 'session-instructions', { cwd: nested })
+
+    const instructions = decision.messages.find((message) => message.source?.kind === 'agent-instructions')
+    assert.ok(instructions, 'the promoted pre-step must inject an agent-instructions context')
+    assert.equal(typeof instructions.id, 'string')
+    assert.ok(instructions.id.length > 0, 'injected context messages must carry a durable id')
+    assert.equal(instructions.role, 'user')
+    assert.equal(instructions.source.form, 'instructions')
+    assert.equal(instructions.source.baseline, true)
+    assert.equal(instructions.source.changes[0].path, '$DSH_HOME/AGENTS.md')
+    assert.match(instructions.source.changes[1].path, /^agents?\.md$/i)
+    assert.deepEqual(instructions.source.changes.map((change) => change.action), ['set', 'set'])
+    const text = instructions.content[0].text
+    assert.match(text, /Instructions from: \$DSH_HOME\/AGENTS\.md\n\n# Global Rules/)
+    assert.match(text, /Instructions from: agents?\.md\n\n# Project Rules/i)
+    assert.match(text, /<\/system-reminder>$/, 'the system-reminder frame must be closed')
+  })
+})
+
+test('context messages injected by one pre-step carry distinct durable ids', async (t) => {
+  await withTempHome(t, async (_home) => {
+    const project = await mkdtemp(join(tmpdir(), 'dsh-tool-bootstrap-project-'))
+    t.after(() => rm(project, { recursive: true, force: true }))
+    await mkdir(join(project, '.git'))
+    await writeFile(join(project, 'Agents.md'), '# Project Rules\n')
+
+    const { listeners } = listenersFor(BASE)
+    // 先过一遍 assemble 让插件捕获原始 system prompt,晋升后 persona 与
+    // instructions 会在同一个 pre-step 里成对注入。
+    await assemble(listeners['system-prompt/assemble'], [], TOOLS, 'session-context-ids')
+    const decision = await preStep(listeners['agent/pre-step'], [{ type: 'tool/call' }], [
+      { id: 'm1', content: [], source: { kind: 'user' } },
+    ], 'session-context-ids', { cwd: project })
+
+    const injected = decision.messages.filter((message) => (
+      message.source?.kind === 'plugin' || message.source?.kind === 'agent-instructions'
+    ))
+    assert.equal(injected.length, 2)
+    const ids = injected.map((message) => message.id)
+    assert.ok(ids.every((id) => typeof id === 'string' && id.length > 0))
+    assert.equal(new Set(ids).size, ids.length, 'id-less context messages collide on the client context key')
+    assert.ok(injected.every((message) => message.role === 'user'))
+  })
+})
+
+test('persona context is ordered before skill-catalog and agent-instructions', async (t) => {
+  await withTempHome(t, async (_home) => {
+    const project = await mkdtemp(join(tmpdir(), 'dsh-tool-bootstrap-project-'))
+    t.after(() => rm(project, { recursive: true, force: true }))
+    await mkdir(join(project, '.git'))
+    await writeFile(join(project, 'Agents.md'), '# Project Rules\n')
+
+    const { listeners } = listenersFor(BASE)
+    await assemble(listeners['system-prompt/assemble'], [], TOOLS, 'session-order')
+    // 复刻真实瀑布:内层 tool-skill 在 next() 返回的 messages 里追加 skill-catalog,
+    // 且 claimed 消息被内层克隆,本插件按 identity 找不到 claimed 插入点。
+    const claimed = { id: 'm1', content: [], source: { kind: 'user' } }
+    const decision = await listeners['agent/pre-step'](
+      { agent: fakeAgent([{ type: 'tool/call' }], 'session-order', { cwd: project }), messages: [claimed], turn: 1, step: 1 },
+      async () => ({
+        kind: 'enter',
+        messages: [
+          { ...claimed },
+          { id: 'm2', content: [], source: { kind: 'skill-catalog', form: 'catalog' } },
+        ],
+      }),
+    )
+
+    assert.deepEqual(decision.messages.map((message) => message.source?.kind), [
+      'user', 'plugin', 'skill-catalog', 'agent-instructions',
+    ])
+    const persona = decision.messages[1]
+    assert.equal(persona.content[0].text, reminder(ORIGINAL_PERSONA))
+  })
+})
+
+test('same-directory AGENTS.md and Agents.md variants are injected only once', async (t) => {
+  await withTempHome(t, async (_home) => {
+    const project = await mkdtemp(join(tmpdir(), 'dsh-tool-bootstrap-project-'))
+    t.after(() => rm(project, { recursive: true, force: true }))
+    await mkdir(join(project, '.git'))
+    await writeFile(join(project, 'AGENTS.md'), '# Duplicate Rules\n')
+    // 大小写不敏感文件系统上这是同一物理文件;大小写敏感文件系统上是内容相同的两份。
+    await writeFile(join(project, 'Agents.md'), '# Duplicate Rules\n')
+
+    const { listener } = listenerFor('agent/pre-step')
+    const decision = await preStep(listener, [{ type: 'tool/call' }], [
+      { id: 'm1', content: [], source: { kind: 'user' } },
+    ], 'session-dedupe', { cwd: project })
+
+    const instructions = decision.messages.find((message) => message.source?.kind === 'agent-instructions')
+    assert.ok(instructions)
+    assert.deepEqual(instructions.source.changes.map((change) => change.path), ['AGENTS.md'])
+    const occurrences = instructions.content[0].text.split('# Duplicate Rules').length - 1
+    assert.equal(occurrences, 1)
+  })
+})
+
+test('project discovery stops at the .git root instead of walking to filesystem root', async (t) => {
+  await withTempHome(t, async (_home) => {
+    const outer = await mkdtemp(join(tmpdir(), 'dsh-tool-bootstrap-outer-'))
+    t.after(() => rm(outer, { recursive: true, force: true }))
+    const project = join(outer, 'repo')
+    await mkdir(join(project, '.git'), { recursive: true })
+    await writeFile(join(outer, 'Agents.md'), '# Outside Rules\n')
+    await writeFile(join(project, 'Agents.md'), '# Inside Rules\n')
+
+    const { listener } = listenerFor('agent/pre-step')
+    const decision = await preStep(listener, [{ type: 'tool/call' }], [
+      { id: 'm1', content: [], source: { kind: 'user' } },
+    ], 'session-root', { cwd: project })
+
+    const instructions = decision.messages.find((message) => message.source?.kind === 'agent-instructions')
+    assert.ok(instructions)
+    assert.equal(instructions.source.changes.length, 1)
+    assert.match(instructions.source.changes[0].path, /^agents?\.md$/i)
+    assert.match(instructions.content[0].text, /# Inside Rules/)
+    assert.doesNotMatch(instructions.content[0].text, /# Outside Rules/)
+  })
+})
+
+test('missing session cwd falls back to process.cwd for project discovery', async (t) => {
+  await withTempHome(t, async (_home) => {
+    const project = await mkdtemp(join(tmpdir(), 'dsh-tool-bootstrap-cwd-'))
+    t.after(() => rm(project, { recursive: true, force: true }))
+    await mkdir(join(project, '.git'))
+    await writeFile(join(project, 'Agents.md'), '# Cwd Fallback Rules\n')
+
+    const previousCwd = process.cwd()
+    process.chdir(project)
+    t.after(() => process.chdir(previousCwd))
+
+    const { listener } = listenerFor('agent/pre-step')
+    const decision = await preStep(listener, [{ type: 'tool/call' }], [
+      { id: 'm1', content: [], source: { kind: 'user' } },
+    ], 'session-cwd-fallback')
+
+    const instructions = decision.messages.find((message) => message.source?.kind === 'agent-instructions')
+    assert.ok(instructions)
+    assert.equal(instructions.source.changes.length, 1)
+    assert.match(instructions.source.changes[0].path, /^agents?\.md$/i)
+    assert.match(instructions.content[0].text, /# Cwd Fallback Rules/)
+  })
 })
 
 test('reject decisions pass through untouched', async () => {

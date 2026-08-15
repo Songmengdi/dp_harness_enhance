@@ -54,7 +54,9 @@ Minimal 锚定轨迹稳定,但全程 Minimal 又缺少大部分工具。锚定�
   - persona 保持(与是否 prewarm 无关,`prewarmPersona` 非空即生效):每次
     `system-prompt/assemble` 先把原始 system prompt 渲染后按会话缓存;bootstrap 与
     晋升后的 header 都只保留 `prewarmPersona` 一节,晋升后的第一个 pre-step 把原 prompt
-    作为 `source.kind=plugin`(`form: persona`)的 context 消息注入一次。
+    作为 `source.kind=plugin`(`form: persona`)的 context 消息注入一次;文本以
+    `<system-reminder>` 包裹,并排到三个晋升后 context(persona / skill-catalog /
+    AGENTS.md)的最前面。
 - bootstrap 约束无法满足时不抛错,而是降级为完整目录并一次性告警,组合漂移不会锁死会话。
 
 ## 配置
@@ -86,9 +88,9 @@ request #1(用户第一条消息)
 首个持久 tool/call 或 assistant/message 落盘(默认 promoteOn: either)
 同一回合的下一步起
 - system prompt 仍 = prewarmPersona(锚定句不变)
-- 原 system prompt(原 persona + 其余 section)作为一条 persona context 消息在晋升后的
-  第一个 pre-step 注入一次
-- 完整工具目录 + AGENTS.md + skill catalog
+- 原 system prompt(原 persona + 其余 section)作为一条 `<system-reminder>` 包裹的
+  persona context 消息在晋升后的第一个 pre-step 注入一次,排三个 context 的第一位
+- 完整工具目录 + persona context + AGENTS.md + skill catalog(后两者按内层追加顺序)
 ```
 
 可选:`prewarm: true` 时,插件以系统来源(`source.kind=plugin` / `form=prewarm`)注入
@@ -115,8 +117,14 @@ persona 行关闭。
 
 `agent-instructions` 不随附在 preset 组合中:rc.6 中 host 的 agent-instructions 监听器位于 pre-step
 瀑布,但本插件以 `prepend` 注册、恒为最外层,能在它追加之后做最终过滤;AGENTS.md(全局 + 项目)由
-`tool-bootstrap` 在晋升后的第一个 pre-step 自行注入。skill catalog 仍由 preset 的 `tool-skill` 行
-管理,晋升后自动恢复。
+`tool-bootstrap` 在晋升后的第一个 pre-step 自行注入。注入消息遵循官方 `agent-instructions` 契约
+(`source.kind=agent-instructions` / `form=instructions` / `baseline=true` / `changes` 清单),
+文本为 `<system-reminder>` 分文件小节(`Instructions from: <路径>`),GUI 轨迹与 context 面板
+能按文件清单展示全局与项目指令;发现范围为 `$DSH_HOME` + 项目根(最近的 `.git`)到会话 cwd 的
+逐级目录,`AGENTS.md`/`Agents.md` 同目录内容去重。插件注入的每条 user-role context 消息都带
+唯一 `id` 与 `role: user`(对齐官方 `createUserMessage`):聊天视图按 `data.id` 建 context key,
+两条无 id 消息会撞在同一个 `input-message/undefined` 上,客户端会丢弃后一条(模型已收到、
+GUI 轨迹/上下文却不显示)。skill catalog 仍由 preset 的 `tool-skill` 行管理,晋升后自动恢复。
 
 ## 本地复现(tool-bootstrap presets)
 
@@ -156,7 +164,7 @@ preset 选择器里选 **工具引导标准模式** 或 **工具引导创造模�
 
 ```sh
 dsh plugin --profile <profile> add \
-  "github:Songmengdi/dp_harness_enhance#dsh-tool-bootstrap-v0.4.0&path:dsh-tool-bootstrap"
+  "github:Songmengdi/dp_harness_enhance#dsh-tool-bootstrap-v0.5.0&path:dsh-tool-bootstrap"
 npm run sync:preset:release   # 让 preset 引用 profile 里已安装的发布包
 ```
 
@@ -172,7 +180,12 @@ npm run sync:preset:release   # 让 preset 引用 profile 里已安装的发布�
 
 - 首份 header 恰为 bootstrap 目录且 system 为 Minimal 锚定句,晋升前无 AGENTS.md / skill catalog;
 - 首个 tool/call 或 assistant/message 后,同一回合的下一步 header 即为完整目录、system 仍为
-  锚定句,原 system prompt 作为 persona context 消息注入,并恢复 AGENTS.md 与 skill catalog。
+  锚定句,原 system prompt 作为 persona context 消息注入,并恢复 AGENTS.md(官方 instructions
+  契约:form/baseline/changes + 唯一 durable id)与 skill catalog。
+
+e2e profile 的 `package.json` 已直接声明 `dsh-tool-bootstrap` 依赖(与 `.npmrc` 的
+`ignore-workspace-root-check` 配套),`sync:e2e-profile` 重装不会把手动 `dsh plugin add` 的
+依赖剪掉。
 
 ```sh
 npm run sync:e2e-profile   # 同步 ~/.dsh/profiles/anchored-e2e 并 pnpm install
@@ -242,11 +255,14 @@ prewarm 模式约消耗 3~4 次真实模型往返,默认模式约 2~3 次。
   e2e 驱动器参数化(`E2E_PRESET_ID`/`E2E_BOOTSTRAP`/`E2E_FULL_INCLUDES`)。
 - v0.3 —— 对齐上游 PR #7 的首请求条件:`promoteOn: either`(纯文字首答不困死会话)、
   `bootstrapMaxTokens: 1024`、首请求剥离 AGENTS.md / skill catalog。
-- v0.4(当前开发中)—— 上游式加载过程 + 可选 prewarm:随附 preset 不预发消息,用户第一条消息
+- v0.4 —— 上游式加载过程 + 可选 prewarm:随附 preset 不预发消息,用户第一条消息
   就是 request #1;`promoteOn: either` 下首个 tool/call 或 assistant/message 后同一回合即开放完整
   目录;两轮 system prompt 恒为锚定句、原 system prompt 以 persona context 消息注入;prewarm
   作为可选系统预输入模式;preset 改独立 id(`tool-bootstrap-standard` / `tool-bootstrap-cordis`)
   与上游 preset 共存。
+- v0.5 —— AGENTS.md 注入对齐官方 `agent-instructions` 契约(form/baseline/changes + 唯一
+  durable id),修复 GUI 轨迹/聊天流不显示;persona context 以 `<system-reminder>` 包裹并排在
+  三个晋升后 context 的第一位;项目发现停在最近的 `.git` 根、`Agents.md` 同目录去重。
 - 后续候选:多阶段晋升(如 bootstrap → 中级 → 全量)、按结果晋升(首个成功调用 / 连续 N 次失败回退)、
   host 平面按预设映射的"零快照"接入。
 

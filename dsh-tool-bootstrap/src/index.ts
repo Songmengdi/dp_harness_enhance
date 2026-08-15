@@ -28,10 +28,10 @@ import type {} from '@deepseek-ai/dsh-agent-presets'
 import { PERSONA_SECTION, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { AssembleContext, PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import Schema from '@deepseek-ai/schemastery'
-import { randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
+import { access, readdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 
 export const name = 'tool-bootstrap'
 
@@ -143,12 +143,102 @@ const PROMOTE_EVENTS: Record<NonNullable<BootstrapConfig['promoteOn']>, string[]
 /** bootstrap 首请求必须剥离的注入提醒。 */
 const BOOTSTRAP_INJECTED_SOURCE_KINDS = new Set(['skill-catalog', 'agent-instructions'])
 
-const INSTRUCTIONS_WRAPPER = '<system-reminder>\n'
-  + 'The following workspace instructions may be relevant to your work. Use them as guidance when applicable. '
-  + 'More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.\n\n'
+const INSTRUCTIONS_INTRO = 'The following workspace instructions may be relevant to your work. Use them as guidance when applicable. '
+  + 'More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.'
+
+const SYSTEM_REMINDER_OPEN = '<system-reminder>'
+const SYSTEM_REMINDER_CLOSE = '</system-reminder>'
+/** 同一目录里同时识别 AGENTS.md 与 Agents.md;同名候选按内容去重,只保留首个。 */
+const INSTRUCTION_FILE_NAMES = ['AGENTS.md', 'Agents.md'] as const
+const USER_GLOBAL_SCOPE = 'user-global'
+const PROJECT_ROOT_MARKERS = ['.git']
+
+interface InstructionFile {
+  absolutePath: string
+  displayPath: string
+  scope: string
+  content: string
+}
+
+/** 晋升后注入的 AGENTS.md 基线:渲染文本 + 官方 agent-instructions 契约的 changes。 */
+interface InstructionSet {
+  text: string
+  changes: Array<{ action: 'set'; scope: string; path: string; digest: string }>
+}
+
+const defaultDshHome = () => join(homedir(), '.dsh')
+const resolveDshHome = () => {
+  const fromEnv = process.env.DSH_HOME
+  return fromEnv !== undefined && fromEnv.trim().length > 0 ? resolve(fromEnv) : defaultDshHome()
+}
+
+/** 官方同款显示规则:默认 home 显示 ~/.dsh,自定义 DSH_HOME 显示 $DSH_HOME。 */
+function dshHomeDisplay(dshHome: string): string {
+  return dshHome === defaultDshHome() ? '~/.dsh' : '$DSH_HOME'
+}
+
+function instructionContentSha1(content: string): string {
+  return createHash('sha1').update(content).digest('hex')
+}
+
+function escapeInstructionFrameBody(text: string): string {
+  return text.replaceAll(SYSTEM_REMINDER_CLOSE, '<\\/system-reminder>')
+}
+
+/** 把任意注入文本包成与官方 instructions 一致的 system-reminder frame。 */
+function systemReminderText(text: string): string {
+  return `${SYSTEM_REMINDER_OPEN}\n${escapeInstructionFrameBody(text)}\n${SYSTEM_REMINDER_CLOSE}`
+}
+
+function isPluginPersonaContext(message: unknown): boolean {
+  const source = (message as { source?: { kind?: string; form?: string; plugin?: string } } | undefined)?.source
+  return source?.kind === 'plugin' && source.form === 'persona' && source.plugin === PERSONA_CONTEXT_PLUGIN
+}
+
+/**
+ * 把 persona context 移到三个晋升后 context(skill-catalog / agent-instructions /
+ * persona)的最前面。内层 tool-skill 的 catalog 追加在 next() 之后,且 claimed
+ * 消息可能被内层克隆导致按 identity 找不到插入点;显式重排保证顺序稳定。
+ */
+function withPersonaFirst<T>(messages: T[]): T[] {
+  const personaIndex = messages.findIndex(isPluginPersonaContext)
+  if (personaIndex < 0) return messages
+  const withoutPersona = messages.filter((_message, index) => index !== personaIndex)
+  const firstInjectedContext = withoutPersona.findIndex((message) => {
+    const kind = (message as { source?: { kind?: string } } | undefined)?.source?.kind
+    return kind === 'skill-catalog' || kind === 'agent-instructions'
+  })
+  if (firstInjectedContext < 0) return messages
+  const reordered = [...withoutPersona]
+  reordered.splice(firstInjectedContext, 0, messages[personaIndex])
+  return reordered
+}
+
+function projectScopeKey(directory: string, fileName: string): string {
+  return `${directory.length === 0 ? '.' : directory}\0${fileName}`
+}
+
+function projectDisplayPath(projectRoot: string, absolutePath: string): string {
+  const display = relative(projectRoot, absolutePath)
+  return display.length === 0 ? basename(absolutePath) : display
+}
 
 /** 原始 system prompt 作为 context 消息注入时的 source.plugin 标识。 */
 const PERSONA_CONTEXT_PLUGIN = '@deepseek-ai/dsh-tool-bootstrap'
+
+/**
+ * 插件注入的 user-role context 消息必须带唯一 id:聊天视图按 `data.id` 建立
+ * context key,同一 pre-step 注入的两条 id-less 消息会在 `input-message/undefined`
+ * 上相撞,客户端装配会丢弃后一条(模型收到、GUI 轨迹/上下文不显示)。
+ */
+function contextMessage(text: string, source: Record<string, unknown>): unknown {
+  return {
+    id: randomUUID(),
+    role: 'user',
+    content: [{ type: 'text', text }],
+    source,
+  }
+}
 
 /** preset 挂载的 composition 目录(baseUrl)尾段就是 preset id。 */
 function presetIdFromBaseUrl(baseUrl: string | undefined): string | undefined {
@@ -168,34 +258,124 @@ function presetIdFromBaseUrl(baseUrl: string | undefined): string | undefined {
 }
 
 /**
- * 收集全局($DSH_HOME/AGENTS.md)+ 项目(cwd 向上逐级)的工作区指令。
+ * 从 cwd 向上找到最近的 `.git` 标记目录作为项目根;找不到时退回 cwd 本身,
+ * 不继续把上层无关目录的 AGENTS.md 拉进上下文。
+ */
+async function findProjectRoot(cwd: string): Promise<string> {
+  let current = resolve(cwd)
+  for (;;) {
+    for (const marker of PROJECT_ROOT_MARKERS) {
+      try {
+        await access(join(current, marker))
+        return current
+      } catch {
+        // 该目录没有此标记,继续向上。
+      }
+    }
+    const parent = dirname(current)
+    if (parent === current) return resolve(cwd)
+    current = parent
+  }
+}
+
+/** root → cwd 的包含链(由宽到窄),对齐官方 agent-instructions 的发现顺序。 */
+function ancestorChain(root: string, cwd: string): string[] {
+  const chain: string[] = []
+  const resolvedRoot = resolve(root)
+  let current = resolve(cwd)
+  while (current !== resolvedRoot) {
+    chain.push(current)
+    const parent = dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  chain.push(resolvedRoot)
+  return chain.reverse()
+}
+
+/**
+ * 收集全局($DSH_HOME/AGENTS.md)+ 项目(项目根 → cwd 逐级)的工作区指令,
+ * 渲染为官方 agent-instructions 的 baseline 形态:`<system-reminder>` 分文件
+ * 小节 + `form: instructions` 所需的 changes 清单。
  * 全部缺失时返回 undefined。web profile 没有 host agent-instructions 行,
  * 晋升后由本插件自行注入;有 host 行的部署已有持久事件,会自动跳过。
  */
-async function readInstructionFiles(agent: BootstrapAgent): Promise<string | undefined> {
-  const dshHome = process.env.DSH_HOME ?? join(homedir(), '.dsh')
-  const candidates: string[] = []
-  for (const name of ['AGENTS.md', 'Agents.md']) candidates.push(join(dshHome, name))
-  const cwd = agent.session.header?.cwd
-  if (cwd !== undefined) {
-    let dir = resolve(cwd)
-    for (;;) {
-      for (const name of ['AGENTS.md', 'Agents.md']) candidates.push(join(dir, name))
-      const parent = dirname(dir)
-      if (parent === dir) break
-      dir = parent
+async function readInstructionFiles(agent: BootstrapAgent): Promise<InstructionSet | undefined> {
+  const dshHome = resolveDshHome()
+  const files: InstructionFile[] = []
+
+  const addDirectoryCandidates = async (
+    directory: string,
+    displayOf: (fileName: string) => string,
+    scopeOf: (fileName: string) => string,
+  ) => {
+    // 大小写不敏感文件系统上候选名与磁盘实际大小写可能不一致;
+    // 用 readdir 解析真实文件名,让 changes.path 与文本小节显示磁盘上的名字。
+    const entries: string[] = await readdir(directory).catch(() => [] as string[])
+    const actualNameOf = (candidate: string): string | undefined => {
+      if (entries.includes(candidate)) return candidate
+      const matches = entries.filter((entry) => entry.toLowerCase() === candidate.toLowerCase())
+      return matches.length === 1 ? matches[0] : undefined
+    }
+    const reads: InstructionFile[] = []
+    const seenPaths = new Set<string>()
+    for (const candidate of INSTRUCTION_FILE_NAMES) {
+      const fileName = actualNameOf(candidate)
+      if (fileName === undefined) continue
+      const absolutePath = join(directory, fileName)
+      if (seenPaths.has(absolutePath)) continue
+      seenPaths.add(absolutePath)
+      try {
+        const content = (await readFile(absolutePath, 'utf8')).trim()
+        if (content.length > 0) {
+          reads.push({ absolutePath, displayPath: displayOf(fileName), scope: scopeOf(fileName), content })
+        }
+      } catch {
+        // 文件不存在或不可读:跳过。
+      }
+    }
+    // AGENTS.md / Agents.md 在大小写不敏感文件系统上指向同一文件,
+    // 同目录同名候选按内容去重,避免全局和项目内容重复注入。
+    const digests = new Set<string>()
+    for (const file of reads) {
+      const digest = instructionContentSha1(file.content)
+      if (digests.has(digest)) continue
+      digests.add(digest)
+      files.push(file)
     }
   }
-  const parts: string[] = []
-  for (const file of candidates) {
-    try {
-      const text = (await readFile(file, 'utf8')).trim()
-      if (text.length > 0) parts.push(text)
-    } catch {
-      // 文件不存在或不可读:跳过。
-    }
+
+  await addDirectoryCandidates(
+    dshHome,
+    (fileName) => `${dshHomeDisplay(dshHome)}/${fileName}`,
+    (fileName) => `${USER_GLOBAL_SCOPE}\0${fileName}`,
+  )
+
+  const cwd = agent.session.header?.cwd ?? process.cwd()
+  const projectRoot = await findProjectRoot(resolve(cwd))
+  for (const directory of ancestorChain(projectRoot, cwd)) {
+    await addDirectoryCandidates(
+      directory,
+      (fileName) => projectDisplayPath(projectRoot, join(directory, fileName)),
+      (fileName) => projectScopeKey(relative(projectRoot, directory), fileName),
+    )
   }
-  return parts.length === 0 ? undefined : INSTRUCTIONS_WRAPPER + parts.join('\n\n')
+
+  if (files.length === 0) return undefined
+  const changes = files.map((file) => ({
+    action: 'set' as const,
+    scope: file.scope,
+    path: file.displayPath,
+    digest: instructionContentSha1(file.content),
+  }))
+  const sections = files.map((file) => (
+    `Instructions from: ${file.displayPath}\n\n${escapeInstructionFrameBody(file.content)}`
+  ))
+  const text = `${SYSTEM_REMINDER_OPEN}\n`
+    + `${escapeInstructionFrameBody(INSTRUCTIONS_INTRO)}\n\n`
+    + `${sections.join('\n\n')}\n`
+    + SYSTEM_REMINDER_CLOSE
+  return { text, changes }
 }
 
 function stringList(value: string[], field: string): string[] {
@@ -352,6 +532,8 @@ export function apply(ctx: Context, config: BootstrapConfig = {}) {
           return
         }
         live.followup({
+          id: randomUUID(),
+          role: 'user',
           content: [{ type: 'text', text: prewarmMessage }],
           source: {
             kind: 'plugin',
@@ -557,10 +739,9 @@ export function apply(ctx: Context, config: BootstrapConfig = {}) {
       injectedPersonaContext.add(session.id)
       const original = originalPrompts.get(session.id)
       if (original !== undefined && original.trim() !== prewarmPersona) {
-        pending.push({
-          content: [{ type: 'text', text: original }],
-          source: { kind: 'plugin', plugin: PERSONA_CONTEXT_PLUGIN, form: 'persona' },
-        })
+        pending.push(contextMessage(systemReminderText(original), {
+          kind: 'plugin', plugin: PERSONA_CONTEXT_PLUGIN, form: 'persona',
+        }))
       }
       originalPrompts.delete(session.id)
     }
@@ -571,13 +752,15 @@ export function apply(ctx: Context, config: BootstrapConfig = {}) {
       if (existing) {
         injectedInstructions.add(session.id)
       } else {
-        const text = await readInstructionFiles(agent)
+        const instructions = await readInstructionFiles(agent)
         injectedInstructions.add(session.id)
-        if (text !== undefined) {
-          pending.push({
-            content: [{ type: 'text', text }],
-            source: { kind: 'agent-instructions' },
-          })
+        if (instructions !== undefined) {
+          pending.push(contextMessage(instructions.text, {
+            kind: 'agent-instructions',
+            form: 'instructions',
+            baseline: true,
+            changes: instructions.changes,
+          }))
         }
       }
     }
@@ -586,9 +769,10 @@ export function apply(ctx: Context, config: BootstrapConfig = {}) {
     const claimed = (payload as { messages?: unknown[] }).messages
     const lastClaimed = decision.messages.findLastIndex((message) => claimed?.includes(message))
     const insertAt = lastClaimed === -1 ? decision.messages.length : lastClaimed + 1
+    const withPending = decision.messages.toSpliced(insertAt, 0, ...(pending as never[]))
     return {
       kind: 'enter',
-      messages: decision.messages.toSpliced(insertAt, 0, ...(pending as never[])),
+      messages: withPersonaFirst(withPending),
     }
   }, { prepend: true })
 }

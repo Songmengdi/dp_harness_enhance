@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-ui-enhance",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Session UI enhancements for the dsh web GUI: a vertically centered rail of turn bars at the left edge of the conversation column (hover ramps bar lengths, hover card previews the turn input, click locates and highlights the message), tiered content-width breakpoints, a zcode-style markdown typography restyle (compact type scale, one-notch-heavier weights, pure-ink body text, framed tables, code-block cards with per-language brand icons), a durable mermaid diagram renderer (```mermaid code blocks become theme-aware interactive SVG cards the moment the fence closes — rendered locally in the browser via mermaid.js, zero network dependency), a quiet bottom collapse button for tall expanded Think blocks, and a restyle of user message bubbles (smaller radius, compact type, hairline border) with a collapse toggle for overlong inputs, a matching composer card restyle with focus ring, and workspace session-row actions (the row ellipsis becomes an archive button that swaps in a small red confirm button before archiving; rename and fork move into a right-click context menu).",
   "type": "module",
   "main": "lib/index.js",

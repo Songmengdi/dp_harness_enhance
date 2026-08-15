@@ -26,7 +26,14 @@ import { configNow, subscribeConfig } from './live-config.js'
 
 const ROW_SELECTOR = '[data-chat-flow-kind="user"]'
 const USER_ROW_SELECTOR = '[data-time-hover-root]'
-const BUBBLE_SELECTOR = '[class*="_bubble"]'
+/**
+ * 消息气泡只在 userStack 直接子级这个结构位上。不能用裸
+ * `[class*="_bubble"]`:复制按钮悬停时,产品 Tooltip 的气泡 span
+ * (primitives Tooltip 的 `.bubble`,内联挂在 actions 行里)同样命中
+ * 该子串,曾被本模块的 position:relative 盖掉 fixed 定位、进入文档流
+ * 顶歪复制按钮并形成「显示→顶歪→丢失 hover→收起→再悬停」的频闪。
+ */
+const BUBBLE_SELECTOR = ':scope > div:first-child > [class*="_bubble"]:not([role="tooltip"])'
 const BUTTON_CLASS = 'z-bubble-toggle'
 const SVG_NS = 'http://www.w3.org/2000/svg'
 /** 内容只超出阈值一点时不值得折叠(折叠条本身也占一行)。 */
@@ -196,7 +203,8 @@ export function applyUserBubble(ctx: ClientContext): void {
       document.body.removeAttribute('data-z-user-bubble')
       for (const btn of document.querySelectorAll(`.${BUTTON_CLASS}`)) btn.remove()
       for (const row of document.querySelectorAll(ROW_SELECTOR)) {
-        const bubble = row.querySelector(BUBBLE_SELECTOR)
+        const userRow = row.querySelector(USER_ROW_SELECTOR)
+        const bubble = userRow instanceof HTMLElement ? userRow.querySelector(BUBBLE_SELECTOR) : null
         const stack = bubble?.parentElement
         if (stack instanceof HTMLElement) {
           stack.removeAttribute('data-z-collapse')

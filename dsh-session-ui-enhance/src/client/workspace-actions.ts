@@ -7,10 +7,12 @@
  * 器),所以本模块沿用插件的 DOM 增强模式:
  *
  * - 隐藏原「...」按钮(`data-z-session-menu-source` + CSS display:none),
- *   在同容器注入一枚同款样式的归档图标按钮。单击归档按钮时,程序化
- *   click 原按钮把产品菜单打开(菜单项仍是产品自己的 handler),然后
- *   点击其中的归档项——归档逻辑、当前会话清空、失败处理全部由产品
- *   承担,本模块不接管任何会话状态。
+ *   在同容器注入一枚同款样式的归档图标按钮。单击归档按钮不直接归档,
+ *   而是在归档图标所在的位置叠上一枚红色「确认」小按钮(点页面其他
+ *   区域/Escape/滚动即收起);确认后才程序化 click 原按钮把产品菜单打
+ *   开(菜单项仍是产品自己的 handler),然后点击其中的归档项——归档
+ *   逻辑、当前会话清空、失败处理全部由产品承担,本模块不接管任何会话
+ *   状态。
  * - 右键会话行弹出本模块的上下文菜单,只展示另外两项(重命名/分叉会话),
  *   选择后走同一条「打开原菜单 → 点对应项」转发路径,重命名对话框与
  *   分叉行为同样是产品原生的。
@@ -24,6 +26,13 @@
  * 与 code-lang/think-collapse 相同的约定:纯 DOM 观察 + rAF 节流,对
  * React 管理的元素只写 data-z-* 属性,注入节点每次 flush 自愈,卸载时
  * 全部摘除、还原原按钮。
+ *
+ * 归档确认的状态机(产品 rowActions 只在会话行 hover/menuOpen 时显示):
+ * - 归档图标可见 → 单击进入「确认态」:红色「确认」按钮叠在图标位置;
+ * - 确认态退出:点「确认」归档、点击其他区域、Escape、滚动/缩放/窗口
+ *   失焦、鼠标移出该会话行、键盘焦点移出行,或行/按钮被移除/配置关闭;
+ * - 退出即移除确认按钮:归档图标按产品规则在下次 hover 时重新出现,
+ *   确认态绝不残留在不可见的 rowActions 里。
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { configNow, subscribeConfig } from './live-config.js'
@@ -33,10 +42,13 @@ const TITLE_SELECTOR = ':scope > [class*="_title"]'
 const ROW_ACTIONS_SELECTOR = ':scope > [class*="_rowActions"]'
 const SOURCE_SELECTOR = 'button[class*="_iconButton"]'
 const ROW_ATTR = 'data-z-session-actions'
+const ROW_ACTIONS_ATTR = 'data-z-session-row-actions'
 const SOURCE_ATTR = 'data-z-session-menu-source'
 const ARCHIVE_ATTR = 'data-z-session-archive'
+const CONFIRM_ATTR = 'data-z-session-archive-confirm'
 const PUPPET_ATTR = 'data-z-menu-puppet'
 const ARCHIVE_CLASS = 'z-session-archive'
+const CONFIRM_CLASS = 'z-session-archive-confirm'
 const CONTEXT_CLASS = 'z-session-context'
 const CONTEXT_ITEM_CLASS = 'z-session-context-item'
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -60,9 +72,14 @@ const CONTEXT_LABELS: Record<Locale, Record<'rename' | 'fork', string>> = {
   zh: { rename: '重命名', fork: '分叉会话' },
   en: { rename: 'Rename', fork: 'Fork session' },
 }
+/** 归档确认按钮文案(需求固定为「确认」)。 */
+const CONFIRM_LABEL = '确认'
 
 let contextMenu: HTMLDivElement | null = null
 let contextRow: HTMLElement | null = null
+let confirmButton: HTMLButtonElement | null = null
+let confirmAnchor: HTMLButtonElement | null = null
+let confirmRow: HTMLElement | null = null
 const busyRows = new WeakSet<HTMLElement>()
 
 /** 从产品按钮的 aria-label 判定当前 UI locale(zh / en 两种官方字典)。 */
@@ -84,6 +101,11 @@ export function sessionActionIndex(action: SessionAction): number {
 /** 归档按钮的无障碍名,与产品 aria-label 同构。 */
 export function archiveAriaLabel(locale: Locale, title: string): string {
   return locale === 'en' ? `Archive session ${title}` : `归档会话“${title}”`
+}
+
+/** 归档确认按钮文案。 */
+export function confirmLabel(): string {
+  return CONFIRM_LABEL
 }
 
 interface IconPath {
@@ -170,11 +192,35 @@ function createArchiveButton(row: HTMLElement): HTMLButtonElement {
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.setAttribute(ARCHIVE_ATTR, '')
+  btn.setAttribute('aria-expanded', 'false')
   btn.appendChild(archiveIcon())
   btn.addEventListener('click', (event) => {
     event.preventDefault()
     event.stopPropagation()
     if (busyRows.has(row)) return
+    closeContextMenu()
+    if (confirmButton !== null && confirmAnchor === btn) {
+      // 再点一次归档按钮 = 收起确认小按钮,不触发归档。
+      closeArchiveConfirm()
+      return
+    }
+    showArchiveConfirm(row, btn)
+  })
+  return btn
+}
+
+/** 归档确认小按钮:红色「确认」,由 CSS + JS 叠到归档图标所在的位置。 */
+function createArchiveConfirmButton(row: HTMLElement): HTMLButtonElement {
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.setAttribute(CONFIRM_ATTR, '')
+  btn.className = CONFIRM_CLASS
+  btn.textContent = confirmLabel()
+  btn.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (busyRows.has(row)) return
+    closeArchiveConfirm()
     closeContextMenu()
     busyRows.add(row)
     void triggerSessionAction(row, 'archive').finally(() => {
@@ -182,6 +228,61 @@ function createArchiveButton(row: HTMLElement): HTMLButtonElement {
     })
   })
   return btn
+}
+
+function closeArchiveConfirm(restoreFocus = false): void {
+  // 键盘路径(Escape):焦点在确认按钮上时收起,交还焦点给归档按钮;
+  // 鼠标路径不抢焦点,避免打断用户正在点击的目标。
+  if (restoreFocus && confirmButton !== null && confirmAnchor !== null
+    && confirmButton.contains(document.activeElement) && confirmAnchor.isConnected) {
+    confirmAnchor.focus()
+  }
+  if (confirmAnchor !== null) confirmAnchor.setAttribute('aria-expanded', 'false')
+  if (confirmButton !== null) {
+    confirmButton.remove()
+    confirmButton = null
+  }
+  confirmAnchor = null
+  confirmRow = null
+}
+
+function showArchiveConfirm(row: HTMLElement, anchor: HTMLButtonElement): void {
+  closeContextMenu()
+  closeArchiveConfirm()
+  const actions = rowActionsOf(row)
+  if (actions === null) return
+  const created = createArchiveConfirmButton(row)
+  actions.appendChild(created)
+  confirmAnchor = anchor
+  confirmButton = created
+  confirmRow = row
+  anchor.setAttribute('aria-expanded', 'true')
+  positionArchiveConfirm(created, anchor, actions)
+}
+
+/**
+ * 把红色「确认」小按钮叠到归档图标所在的位置:右缘与归档按钮右缘对齐,
+ * 只向左扩展,避免超出会话行/块的右侧;垂直方向居中到图标上。
+ */
+function positionArchiveConfirm(button: HTMLButtonElement, anchor: HTMLElement, container: HTMLElement): void {
+  button.style.left = '0px'
+  button.style.top = '0px'
+  button.style.width = ''
+  button.style.height = ''
+  const anchorRect = anchor.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
+  const containerStyle = getComputedStyle(container)
+  const borderLeft = Number.parseFloat(containerStyle.borderLeftWidth) || 0
+  const borderTop = Number.parseFloat(containerStyle.borderTopWidth) || 0
+  const anchorLeft = anchorRect.left - containerRect.left - borderLeft
+  const anchorTop = anchorRect.top - containerRect.top - borderTop
+  const rect = button.getBoundingClientRect()
+  const width = Math.max(rect.width, anchorRect.width)
+  const height = Math.max(rect.height, anchorRect.height)
+  button.style.width = `${width}px`
+  button.style.height = `${height}px`
+  button.style.left = `${Math.round(anchorLeft - (width - anchorRect.width))}px`
+  button.style.top = `${Math.round(anchorTop - (height - anchorRect.height) / 2)}px`
 }
 
 /** 对齐一个会话行:隐藏原按钮、注入归档按钮并同步无障碍名。 */
@@ -194,6 +295,7 @@ function syncRow(row: HTMLElement): void {
   }
   row.setAttribute(ROW_ATTR, '')
   source.setAttribute(SOURCE_ATTR, '')
+  if (!actions.hasAttribute(ROW_ACTIONS_ATTR)) actions.setAttribute(ROW_ACTIONS_ATTR, '')
   let btn = actions.querySelector(`[${ARCHIVE_ATTR}]`)
   if (!(btn instanceof HTMLButtonElement) || btn.parentElement !== actions) btn = null
   if (btn === null) {
@@ -212,7 +314,12 @@ function syncRow(row: HTMLElement): void {
 /** 摘掉本模块在某个会话行留下的注入物,还原原「...」按钮。 */
 function clearRow(row: HTMLElement): void {
   row.removeAttribute(ROW_ATTR)
+  if (confirmAnchor !== null && row.contains(confirmAnchor)) closeArchiveConfirm()
   for (const btn of Array.from(row.querySelectorAll(`[${ARCHIVE_ATTR}]`))) btn.remove()
+  for (const btn of Array.from(row.querySelectorAll(`[${CONFIRM_ATTR}]`))) btn.remove()
+  for (const actions of Array.from(row.querySelectorAll(`[${ROW_ACTIONS_ATTR}]`))) {
+    actions.removeAttribute(ROW_ACTIONS_ATTR)
+  }
   for (const source of Array.from(row.querySelectorAll(`[${SOURCE_ATTR}]`))) {
     source.removeAttribute(SOURCE_ATTR)
   }
@@ -222,6 +329,19 @@ function clearRow(row: HTMLElement): void {
 function sync(): void {
   const enabled = configNow().workspaceActions.enabled
   if (contextRow !== null && !contextRow.isConnected) closeContextMenu()
+  if (confirmAnchor !== null
+    && (!confirmAnchor.isConnected || confirmAnchor.getAttribute(ARCHIVE_ATTR) === null)) {
+    closeArchiveConfirm()
+  }
+  if (confirmButton !== null
+    && (!confirmButton.isConnected || confirmButton.getClientRects().length === 0)) {
+    closeArchiveConfirm()
+  }
+  if (confirmButton !== null && confirmAnchor !== null
+    && confirmButton.isConnected && confirmAnchor.isConnected) {
+    const actions = confirmButton.parentElement
+    if (actions instanceof HTMLElement) positionArchiveConfirm(confirmButton, confirmAnchor, actions)
+  }
   const claimed = new Set<HTMLElement>()
   if (enabled) {
     for (const row of querySessionRows()) {
@@ -234,6 +354,7 @@ function sync(): void {
     }
   } else {
     closeContextMenu()
+    closeArchiveConfirm()
   }
   for (const row of Array.from(document.querySelectorAll(`[${ROW_ATTR}]`))) {
     const el = row instanceof HTMLElement ? row : null
@@ -264,6 +385,7 @@ function closeContextMenu(): void {
 }
 
 function showContextMenu(row: HTMLElement, x: number, y: number): void {
+  closeArchiveConfirm()
   closeContextMenu()
   const source = sourceOf(row)
   const locale = source === null ? 'zh' : localeForAriaLabel(source.getAttribute('aria-label'))
@@ -413,17 +535,42 @@ export function applyWorkspaceActions(ctx: ClientContext): void {
     }
     const onPointerDown = (event: PointerEvent): void => {
       const target = event.target
+      if (confirmButton !== null) {
+        const anchor = confirmAnchor
+        const outsideConfirm = !(target instanceof Node) || !confirmButton.contains(target)
+        const outsideAnchor = !(target instanceof Node) || anchor === null || !anchor.contains(target)
+        if (outsideConfirm && outsideAnchor) closeArchiveConfirm()
+      }
       if (contextMenu !== null && (!(target instanceof Node) || !contextMenu.contains(target))) {
         closeContextMenu()
       }
     }
+    // 鼠标移出会话行即取消确认:产品的 rowActions 在非 hover 时会整个
+    // display:none,若只靠点击收起,确认态会残留在不可见容器里,下次
+    // 悬停又突然出现。移出后归档按钮回到"下次 hover 才显示"的产品节奏。
+    const onPointerOut = (event: PointerEvent): void => {
+      if (event.pointerType !== 'mouse' || confirmRow === null) return
+      const row = confirmRow
+      const related = event.relatedTarget
+      if (!(related instanceof Node) || !row.contains(related)) closeArchiveConfirm()
+    }
+    // 键盘路径:焦点移出会话行同样取消确认(产品 rowActions 也不会一直显示)。
+    const onFocusOut = (event: FocusEvent): void => {
+      if (confirmRow === null) return
+      const row = confirmRow
+      const related = event.relatedTarget
+      if (!(related instanceof Node) || !row.contains(related)) closeArchiveConfirm()
+    }
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && contextMenu !== null) {
-        event.preventDefault()
-        closeContextMenu()
+      if (event.key === 'Escape') {
+        const hadOverlay = confirmButton !== null || contextMenu !== null
+        if (confirmButton !== null) closeArchiveConfirm(true)
+        if (contextMenu !== null) closeContextMenu()
+        if (hadOverlay) event.preventDefault()
       }
     }
     const onScrollOrResize = (): void => {
+      closeArchiveConfirm()
       closeContextMenu()
     }
     sync()
@@ -436,6 +583,8 @@ export function applyWorkspaceActions(ctx: ClientContext): void {
     })
     document.addEventListener('contextmenu', onContextMenu, true)
     document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('pointerout', onPointerOut, true)
+    document.addEventListener('focusout', onFocusOut, true)
     document.addEventListener('keydown', onKeyDown, true)
     window.addEventListener('scroll', onScrollOrResize, true)
     window.addEventListener('resize', onScrollOrResize)
@@ -447,15 +596,22 @@ export function applyWorkspaceActions(ctx: ClientContext): void {
       if (raf !== 0) cancelAnimationFrame(raf)
       document.removeEventListener('contextmenu', onContextMenu, true)
       document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('pointerout', onPointerOut, true)
+      document.removeEventListener('focusout', onFocusOut, true)
       document.removeEventListener('keydown', onKeyDown, true)
       window.removeEventListener('scroll', onScrollOrResize, true)
       window.removeEventListener('resize', onScrollOrResize)
       window.removeEventListener('blur', onScrollOrResize)
+      closeArchiveConfirm()
       closeContextMenu()
       for (const source of Array.from(document.querySelectorAll(`[${SOURCE_ATTR}]`))) {
         source.removeAttribute(SOURCE_ATTR)
       }
       for (const btn of Array.from(document.querySelectorAll(`[${ARCHIVE_ATTR}]`))) btn.remove()
+      for (const btn of Array.from(document.querySelectorAll(`[${CONFIRM_ATTR}]`))) btn.remove()
+      for (const actions of Array.from(document.querySelectorAll(`[${ROW_ACTIONS_ATTR}]`))) {
+        actions.removeAttribute(ROW_ACTIONS_ATTR)
+      }
       for (const row of Array.from(document.querySelectorAll(`[${ROW_ATTR}]`))) {
         row.removeAttribute(ROW_ATTR)
       }

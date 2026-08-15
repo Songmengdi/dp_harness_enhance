@@ -32,7 +32,7 @@ export interface ThinkCollapseConfig {
 
 /** 左侧工作区会话行的操作入口改造。 */
 export interface WorkspaceActionsConfig {
-  /** 会话行「...」按钮改为归档按钮,重命名/分叉会话移入右键菜单 */
+  /** 会话行「...」按钮改为带确认浮层的归档按钮,重命名/分叉会话移入右键菜单 */
   enabled: boolean
 }
 

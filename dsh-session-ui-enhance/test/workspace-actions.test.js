@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   actionLabelMatches,
   archiveAriaLabel,
+  confirmLabel,
   localeForAriaLabel,
   sessionActionIndex,
 } from '../lib/types/client/workspace-actions.js'
@@ -32,4 +33,8 @@ test('sessionActionIndex: 菜单条目顺序 rename/fork/archive', () => {
 test('archiveAriaLabel: 与产品 aria-label 同构的归档按钮名', () => {
   assert.equal(archiveAriaLabel('en', 'demo'), 'Archive session demo')
   assert.equal(archiveAriaLabel('zh', '演示'), '归档会话“演示”')
+})
+
+test('confirmLabel: 归档确认按钮文案固定为「确认」', () => {
+  assert.equal(confirmLabel(), '确认')
 })

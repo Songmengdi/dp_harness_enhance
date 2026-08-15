@@ -28,7 +28,7 @@ export interface Config {
   thinkCollapse: ThinkCollapseConfig
   /** 轮次过程折叠(定稿后中间过程收成「过程细节」一行,zcode 式) */
   processCollapse: ProcessCollapseConfig
-  /** 工作区会话行操作(「...」改为归档按钮,重命名/分叉移入右键菜单) */
+  /** 工作区会话行操作(「...」改为带确认浮层的归档按钮,重命名/分叉移入右键菜单) */
   workspaceActions: WorkspaceActionsConfig
   /** 用户消息气泡(精致化重排 + 超长收缩) */
   userBubble: UserBubbleConfig

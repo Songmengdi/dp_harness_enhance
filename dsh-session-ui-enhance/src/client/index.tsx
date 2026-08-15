@@ -51,7 +51,8 @@ import './process-collapse.css'
 // gated on :has(> [role=tablist]); see header.css).
 import './header.css'
 // Side effect: workspace session-row actions — 「...」 becomes an archive
-// button and rename/fork move to a right-click menu (see workspace-actions.ts).
+// button with an in-row red confirm step and rename/fork move to a
+// right-click menu (see workspace-actions.ts).
 import './workspace-actions.css'
 // Side effect: user message bubble restyle + long-input collapse chrome
 // (gated on body[data-z-user-bubble]; see user-bubble.ts).
@@ -291,9 +292,9 @@ export function apply(ctx: ClientContext): void {
   // Fold each finished turn's intermediate process (think rows, tool cards)
   // behind a quiet 「过程细节」toggle, zcode-style (see process-collapse.ts).
   applyProcessCollapse(ctx)
-  // Left-workspace session rows: replace the 「...」 button with one-click
-  // archive and move rename/fork into a right-click menu (see
-  // workspace-actions.ts).
+  // Left-workspace session rows: replace the 「...」 button with an archive
+  // button that pops an in-row red 「确认」 button, and move rename/fork into
+  // a right-click menu (see workspace-actions.ts).
   applyWorkspaceActions(ctx)
   // User message bubbles: quiet restyle + collapse for overlong inputs
   // (see user-bubble.ts).

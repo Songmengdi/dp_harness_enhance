@@ -1,7 +1,7 @@
 /**
  * dsh-session-ui-enhance — 工作区会话行操作改造的样式(global, non-module)。
  *
- * 三件事:
+ * 四件事:
  * - `[data-z-session-menu-source]` 隐藏产品原「...」按钮(React 只管理
  *   自己的 props,未知属性不会被重渲染抹掉;隐藏后仍可程序化 click,
  *   产品 Menu 的 handler 照常工作);
@@ -10,11 +10,20 @@
  *   这层幕布挡住那"闪一帧";
  * - `.z-session-context` 是右键菜单:产品 Menu 同款容器指标(4px 内边距、
  *   12px 圆角、lv3 阴影、specific-menu 底色),菜单项 hover 用产品
- *   interactive-bg-hover token;亮暗主题全部走 token,不写死颜色。
+ *   interactive-bg-hover token;亮暗主题全部走 token,不写死颜色;
+ * - `.z-session-archive-confirm` 是归档确认小按钮:注入在会话行
+ *   rowActions 容器内(`[data-z-session-row-actions]` 提供定位上下文),
+ *   由 workspace-actions.ts 按归档按钮 rect 叠到图标所在的位置,红色
+ *   error token 底、白字,文案固定「确认」。
  */
 
 [data-z-session-menu-source] {
   display: none !important;
+}
+
+/* 归档确认小按钮的定位上下文:保持在产品 rowActions 容器内,不脱离会话行。 */
+[data-z-session-row-actions] {
+  position: relative;
 }
 
 [data-z-menu-puppet] [role="menu"][class*="_portal"] {
@@ -70,4 +79,42 @@
 .z-session-context-item:hover svg,
 .z-session-context-item:focus-visible svg {
   color: var(--dsw-alias-label-primary);
+}
+
+.z-session-archive-confirm {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 22px;
+  padding: 2px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--dsw-alias-state-error-primary, #e5484d);
+  box-shadow: var(--dsw-shadow-lv2);
+  color: #fff;
+  font-family: var(--dsw-font-family);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.z-session-archive-confirm:hover {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #e5484d) 88%, #000);
+}
+
+.z-session-archive-confirm:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dsw-alias-state-error-primary, #e5484d) 60%, #000);
+  outline-offset: 2px;
+}
+
+.z-session-archive-confirm:active {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #e5484d) 80%, #000);
 }

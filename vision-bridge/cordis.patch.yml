@@ -1,0 +1,14 @@
+# dsh-vision-bridge bundle patch：把视觉桥装配进 profile。
+# 配置全部经 Config schema 校验（非法配置在装配时失败，不发布任何能力）；
+# 覆盖配置时按 id 整段替换 config。
+#
+# 语义：
+# - 装配时校验配置，并异步准备 managed Python 运行时（隔离 venv + 锁定依赖）。
+#   运行时未就绪前，任何 Agent 上下文里都不出现 vision_* 工具。
+# - 纯文本模型 Agent 创建后获得引导工具 vision_activate；激活后 12 个执行工具
+#   注册到该 Agent，引导工具对该 Agent 隐藏；视觉模型会话整套隐身。
+# - 粘贴/read/截图检测三条 seamless 钩子按会话隔离（03 票交付）。
+- insert:
+    - id: dsh-vision-bridge
+      name: dsh-vision-bridge
+      config: {}

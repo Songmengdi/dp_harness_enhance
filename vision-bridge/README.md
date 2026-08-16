@@ -1,46 +1,71 @@
-# vision-bridge — 纯文本模型的视觉外挂（vision-hook）
+# vision-bridge — 纯文本模型的视觉桥（Route C 自研实现）
 
-给 text-only 模型外挂一个视觉模型的完整系统：用户粘贴截图 → 落地为临时文件 →
-路径注入上下文 → 模型按「明眼人协议」自己指挥视觉模型看图。
+给 text-only 模型的 dsh Agent 装视觉工程能力：粘贴/读图/截图无缝桥接，
+看图走结构化原生工具（vision_*），语义问题交给远程视觉模型，
+像素级事实（坐标/颜色/差异/几何）交给本地确定性工具。
+视觉模型会话整套能力自动隐身。
 
-## 目录结构（本文件夹 = 唯一真源）
+## 目录结构
 
 ```
 vision-bridge/
-├── plugin/                  # Cordis 插件（挂在 agent preset 里）
-│   ├── package.json
-│   └── lib/index.js         # 全部钩子逻辑 + 内嵌 CLI 回退副本
-├── cli/
-│   └── dsh-vision           # CLI 唯一真源（describe/pixel/media/frames/config）
-├── sync-cli.js              # cli/dsh-vision → 插件内嵌 CLI_SRC 的同步脚本
-├── README.md
-└── PATCH.md                 # 运行时布局、出厂补丁、协议改法、维护说明
+├── src/                      # Route C Host 插件（TypeScript，dsh bundle）
+│   ├── index.ts              # 入口与生命周期（装配校验、启动、卸载清理）
+│   ├── exposure.ts           # 按 Agent 激活状态机（渐进暴露 D5）
+│   ├── runtime.ts            # 统一执行总闸门（并发信号量/超时/取消/契约校验）
+│   ├── runtime-manager.ts    # managed venv（锁定依赖 + 探针；05 加原子切换）
+│   ├── paths.ts              # realpath 围栏（工作区+allowedDirs）+ 产物 staging→原子提交
+│   ├── capabilities.ts       # 按 Agent 判断模型是否原生支持图片（失败缓存带 TTL）
+│   └── tools/                # vision_media / vision_frames / …（工具 schema + execute）
+├── runtime/                  # Python runtime（独立 venv；单入口分派子命令）
+│   ├── requirements.lock     # 锁定依赖（精确版本）
+│   └── dsh_vision/           # contract.py：stdout 单段 JSON + 稳定退出码 + 脱敏 stderr
+├── test/                     # node --test 单测 + 集成测试（真实 venv + 子进程）
+├── docs/architecture.md      # 架构说明（模块职责、契约、决策映射）
+├── package.json / cordis.patch.yml / tsconfig*.json
+│
+│  # —— 旧实现（05 票删除前保持可用，见 README-legacy 说明）——
+├── plugin/                   # 旧单文件 Cordis 插件（vision-hook）
+├── cli/dsh-vision            # 旧 dsh-vision CLI（唯一真源）
+└── sync-cli.js               # cli/dsh-vision → 插件内嵌副本（已修 $' 替换符 bug，支持 --check）
 ```
 
-## 运行时如何接上（重要）
+## 新包（dsh-vision-bridge）开发与验证
 
-- **插件**：`~/.dsh/profiles/web/vision-hook` 是指向 `plugin/` 的**符号链接**，
-  预设行 `- id: vision-hook / name: vision-hook` 经 profile 的 node_modules 解析到这里。
-  改 `plugin/lib/index.js` 就是改运行时。
-- **CLI**：插件每次启动把 `cli/dsh-vision` 安装到 `~/.dsh/bin/dsh-vision`
-  （读不到本文件时才用内嵌副本）。因此：
-  - 改 CLI → 直接编辑 `cli/dsh-vision`，然后 `node vision-bridge/sync-cli.js`
-    刷新内嵌副本（防漂移），再 `dsh-web restart`（其实重启时 installCli 会直接用本文件，sync 只是保持回退副本一致）。
-- **预设**：`~/.dsh/.agent-presets/vision/`（视觉增强）与 `cordis-vision/`（创造+视觉增强）
-  是配置，留在 `~/.dsh`（预设发现不跟随符号链接）。
-- **出厂补丁**：`dsh-host-apiproxy` 的两处图片门槛（放行含 vision-hook 行的预设），
-  dsh 升级后会被覆盖，重打方法见 PATCH.md。
+```bash
+cd vision-bridge
+pnpm install
+npm run verify        # 门禁(零测试即失败) + typecheck + build + 全量测试
+npm run pack:dry      # 打包 dry-run（仅本地交付，不发布）
+```
 
-## 核心行为
+本地装配（不发布任何制品）：
 
-1. 纯文本模型会话：`read`/`read_image` 读图片被 `tools/pre-execute` 拦截，
-   deny reason 携带【明眼人协议】——教模型如何给视觉模型写题（先全景→核对假设→
-   具体可观测的提问→五段式结构化回答→证据追问）。
-2. 用户粘贴的截图：宿主门槛放行 → `agent/pre-step` 把字节落到
-   `$TMPDIR/dsh-vision-paste/<id>.<ext>`（OS 自动清理），image block 替换为纯路径文本。
-3. `tools/post-execute`：bash 产出截图时自动补一段 describe 描述。
-4. 视觉模型会话（如 doubao）：整套钩子隐身，图片原生进模型。
+```bash
+dsh plugin --profile <profile> add -w <本目录绝对路径>
+# reconcile 自动把 dsh-vision-bridge 加进 profile 的 dsh.profile.bundles
+dsh --profile <profile> --dump-config   # 末尾应出现 `# == dsh-vision-bridge` 层
+```
 
-## 改动后的生效方式
+## 旧实现（vision-hook）现状与修复
 
-`dsh-web restart`（插件与补丁都在进程启动时加载；CLI 自动重装）。
+- 旧插件挂在 agent preset 里（`~/.dsh/profiles/web/vision-hook` 符号链接 → `plugin/`），
+  CLI 每次启动安装到 `~/.dsh/bin/dsh-vision`。详细运行时说明见 `PATCH.md`。
+- 01 票已修两个 bug：
+  1. `sync-cli.js` 旧版用 `src.replace(re, block)` 写回，CLI 源码里的 `$'` 被
+     JS 替换符解释，把插件 JS 代码体吞进内嵌 CLI——已改为 indexOf/slice 纯文本拼接，
+     并新增 `--check` 干跑比对（漂移非零退出）；
+  2. 插件定位项目 CLI 的相对层级多了一级（`../../../cli`）——已改为 `../../cli/dsh-vision`，
+     启动安装走真源。
+- 改旧 CLI 后：`node vision-bridge/sync-cli.js`，再 `node vision-bridge/sync-cli.js --check`。
+- 05 票切换完成后旧实现（plugin/、cli/、sync-cli.js）整体删除。
+
+## 状态
+
+| 票 | 内容 | 状态 |
+|---|---|---|
+| 01 | 旧版两 bug 修复 + 新架构基座（media/frames 首条垂直切片） | 完成 |
+| 02 | 核心六工具 + 产物管线 | 待办 |
+| 03 | Seamless 桥 + intent + 自动激活 | 待办 |
+| 04 | trace/extract_foreground/long_screenshot_ocr/html_screenshot | 待办 |
+| 05 | 生产化收口 + 全量 e2e + 本地切换 | 待办 |

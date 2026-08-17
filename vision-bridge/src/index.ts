@@ -12,8 +12,14 @@ import { Runtime } from './runtime.js'
 import { createCapabilityChecker } from './capabilities.js'
 import { Exposure } from './exposure.js'
 import { makeValidators } from './validators.js'
+import { RemoteVision, GlanceCache } from './remote.js'
 import { defineMediaTool } from './tools/media.js'
 import { defineFramesTool } from './tools/frames.js'
+import { defineGlanceTool } from './tools/glance.js'
+import { defineGroundTool, defineDetectTool } from './tools/ground.js'
+import { defineCropTool } from './tools/crop.js'
+import { definePixelDiffTool } from './tools/pixel-diff.js'
+import { defineDominantColorsTool } from './tools/dominant-colors.js'
 
 export const name = 'dsh-vision-bridge'
 export { Config }
@@ -30,6 +36,9 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
   }
   if (config.venvDir && !config.venvDir.startsWith('/')) {
     throw new Error(`venvDir 必须是绝对路径（收到 ${JSON.stringify(config.venvDir)}）`)
+  }
+  if (config.credential && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(config.credential)) {
+    throw new Error(`credential 必须是合法的 DSH Credential 引用名（POSIX 标识符，收到 ${JSON.stringify(config.credential)}）`)
   }
 
   const logger = createLogger(ctx)
@@ -61,9 +70,29 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
   const fences = new FenceRegistry(config.allowedDirs, config.artifactsDir)
   const capability = createCapabilityChecker(ctx, logger)
 
-  const mediaTool = defineMediaTool({ fences, runtime })
-  const framesTool = defineFramesTool({ fences, runtime })
-  const execTools: ToolDefinition[] = [mediaTool, framesTool]
+  const remote = new RemoteVision(ctx, runtime, {
+    endpoint: config.endpoint,
+    model: config.model,
+    credential: config.credential,
+    language: config.language,
+    visionTimeoutMs: config.visionTimeoutMs,
+    maxRetries: config.maxRetries,
+  }, logger)
+  const cache = new GlanceCache(config.glanceCacheTtlMs, logger)
+  const toolEnv = { fences, runtime }
+  const remoteEnv = { fences, runtime, remote, cache }
+
+  const mediaTool = defineMediaTool(toolEnv)
+  const framesTool = defineFramesTool(toolEnv)
+  const glanceTool = defineGlanceTool(remoteEnv)
+  const groundTool = defineGroundTool(remoteEnv)
+  const detectTool = defineDetectTool(remoteEnv)
+  const cropTool = defineCropTool(toolEnv)
+  const pixelDiffTool = definePixelDiffTool(toolEnv)
+  const dominantColorsTool = defineDominantColorsTool(toolEnv)
+  const execTools: ToolDefinition[] = [
+    mediaTool, framesTool, glanceTool, groundTool, detectTool, cropTool, pixelDiffTool, dominantColorsTool,
+  ]
 
   const exposure = new Exposure(ctx, {
     runtimeReady: () => startupError === null && manager.ready,
@@ -83,6 +112,7 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
     exposure.handleAgentCreated(payload.agent)
   })
   ctx.on('agent/disposed', (payload: { agent: Parameters<typeof exposure.handleAgentCreated>[0] }) => {
+    cache.drop(payload.agent.id)
     exposure.handleAgentDisposed(payload.agent)
   })
   ctx.on('llm/adapters-updated', () => capability.invalidate())

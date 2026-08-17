@@ -22,6 +22,20 @@ export const Config = Schema.object({
   defaultTimeoutMs: Schema.number().default(120000).min(1000),
   /** runtime 准备 / 探针超时（毫秒）。 */
   prepareTimeoutMs: Schema.number().default(180000).min(5000),
+  /** 视觉 API 端点（OpenAI-compatible base URL）；空 = 远程工具未配置。 */
+  endpoint: Schema.string().default(''),
+  /** 视觉模型 id。 */
+  model: Schema.string().default(''),
+  /** DSH Credential 引用名（只存引用，凭据每次现取现用、只进子进程环境）。 */
+  credential: Schema.string().default(''),
+  /** 视觉回答语言（进 prompt 与 glance 缓存键）。 */
+  language: Schema.string().default('中文'),
+  /** 远程操作整操作硬超时（毫秒）。 */
+  visionTimeoutMs: Schema.number().default(90000).min(5000),
+  /** 429/5xx/网络错误退避重试上限。 */
+  maxRetries: Schema.number().default(2).min(0).max(5),
+  /** vision_glance 会话级成功缓存 TTL（毫秒，0 = 关闭）。 */
+  glanceCacheTtlMs: Schema.number().default(1800000).min(0),
 })
 
 export interface VisionBridgeConfig {
@@ -35,6 +49,13 @@ export interface VisionBridgeConfig {
   maxConcurrency: number
   defaultTimeoutMs: number
   prepareTimeoutMs: number
+  endpoint: string
+  model: string
+  credential: string
+  language: string
+  visionTimeoutMs: number
+  maxRetries: number
+  glanceCacheTtlMs: number
 }
 
 /** 子目录名必须是相对路径、不能逃逸工作区。 */

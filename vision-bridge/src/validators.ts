@@ -36,10 +36,86 @@ function validateFrames(value: unknown): void {
   }
 }
 
+function requireObjectList(value: unknown, label: string): Array<Record<string, unknown>> {
+  const arr = requireArray(value, label)
+  return arr.map((item, i) => {
+    if (!isObject(item)) throw new Error(`${label}[${i}] 必须是对象`)
+    return item
+  })
+}
+
+function validateGlance(value: unknown): void {
+  if (!isObject(value)) throw new Error('glance 结果必须是对象')
+  requireObjectList(value.images, 'images')
+  requireString(value.answer, 'answer')
+  if (typeof value.mode !== 'string') throw new Error('mode 必须是字符串')
+  if (typeof value.truncated !== 'boolean') throw new Error('truncated 必须是布尔值')
+}
+
+function validateBox(box: unknown): void {
+  if (!isObject(box)) throw new Error('box 必须是对象')
+  for (const k of ['x1', 'y1', 'x2', 'y2']) {
+    if (typeof box[k] !== 'number') throw new Error(`box.${k} 必须是数字`)
+  }
+}
+
+function validateGrounded(value: unknown): void {
+  if (!isObject(value)) throw new Error('ground/detect 结果必须是对象')
+  if (!isObject(value.image)) throw new Error('image 必须是对象')
+  if (typeof value.imageWidth !== 'number' || typeof value.imageHeight !== 'number') {
+    throw new Error('imageWidth/imageHeight 必须是数字')
+  }
+  const matches = requireObjectList(value.matches, 'matches')
+  for (const match of matches) {
+    requireString(match.label, 'matches[].label')
+    validateBox(match.box)
+  }
+}
+
+function validateCrop(value: unknown): void {
+  if (!isObject(value)) throw new Error('crop 结果必须是对象')
+  validateBox(value.box)
+  if (typeof value.width !== 'number' || typeof value.height !== 'number') throw new Error('宽高必须是数字')
+  requireString(value.format, 'format')
+}
+
+function validatePixelDiff(value: unknown): void {
+  if (!isObject(value)) throw new Error('pixel_diff 结果必须是对象')
+  if (typeof value.ratioPct !== 'number') throw new Error('ratioPct 必须是数字')
+  const worst = requireObjectList(value.worstRegions, 'worstRegions')
+  for (const region of worst) {
+    validateBox(region.box)
+    if (typeof region.ratioPct !== 'number') throw new Error('worstRegions[].ratioPct 必须是数字')
+  }
+}
+
+function validateDominantColors(value: unknown): void {
+  if (!isObject(value)) throw new Error('dominant_colors 结果必须是对象')
+  const colors = requireObjectList(value.colors, 'colors')
+  for (const color of colors) {
+    requireString(color.color, 'colors[].color')
+    if (typeof color.sharePct !== 'number') throw new Error('colors[].sharePct 必须是数字')
+  }
+  if (value.candidates !== undefined) {
+    for (const item of requireObjectList(value.candidates, 'candidates')) {
+      requireString(item.color, 'candidates[].color')
+      if (typeof item.sharePct !== 'number' || typeof item.winner !== 'boolean') {
+        throw new Error('candidates[] 形状非法')
+      }
+    }
+  }
+}
+
 export function makeValidators(): Record<string, (value: unknown) => void> {
   return {
     media: validateMedia,
     frames: validateFrames,
-    // 02/04 票的工具在此追加。
+    glance: validateGlance,
+    ground: validateGrounded,
+    detect: validateGrounded,
+    crop: validateCrop,
+    pixel_diff: validatePixelDiff,
+    dominant_colors: validateDominantColors,
+    // 04 票的工具在此追加。
   }
 }

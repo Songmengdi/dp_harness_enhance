@@ -6,12 +6,18 @@ import json
 import sys
 
 from . import contract
-from .commands import frames, media, probe
+from .commands import crop, dominant_colors, frames, glance, ground, media, pixel_diff, probe
 
 SUBCOMMANDS = {
     'probe': probe,
     'media': media,
     'frames': frames,
+    'glance': glance,
+    'ground': ground,
+    'detect': ground,
+    'crop': crop,
+    'pixel_diff': pixel_diff,
+    'dominant_colors': dominant_colors,
 }
 
 
@@ -43,7 +49,11 @@ def main(argv=None):
     if module is None:
         contract.fail('input', '未知子命令 %s，可用: %s' % (sub, ', '.join(sorted(SUBCOMMANDS))))
     try:
-        contract.ok(module.run(spec))
+        # detect 复用 ground 模块的盘点实现
+        if sub == 'detect':
+            contract.ok(module.run_detect(spec))
+        else:
+            contract.ok(module.run(spec))
     except SystemExit:
         raise
     except Exception as exc:  # 未预期异常 → runtime 类别，脱敏短摘要

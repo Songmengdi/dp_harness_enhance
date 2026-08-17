@@ -51,18 +51,25 @@ out: { colors:[{color,sharePct}], candidates?:[{color,sharePct,winner}], winner?
 
 ## 验收标准
 
-- [ ] `vision_glance` 支持图片问答、无问题全景描述、OCR 与多图一次比较；结果含图片信息、模式与回答，截断状态显式返回
-- [ ] `vision_ground` 按目标名返回原图像素框；`vision_detect` 返回带编号的元素清单与逐字可见文字；指定区域搜索时输出仍映射回原图坐标，越界或退化框被拒绝
-- [ ] `vision_crop` 把像素框裁成文件；`vision_pixel_diff` 返回差异比例、最差区域框并产出热力图与报告；`vision_dominant_colors` 返回区域主色分布，并支持候选色打分
-- [ ] 文件型产物先写临时 staging、校验通过后原子提交到工作区产物目录；模型可见结果是结构化描述（路径/大小/类型/来源工具），可直接喂给后续工具
-- [ ] 远程操作凭据使用 DSH Credential 引用，每次调用现取现用、只注入子进程环境；日志、错误与工具结果均不含密钥，上游错误正文脱敏
-- [ ] 视觉协议与 focus hint 提示词只有单一来源；hint 被明确标注为「只用于判断重点，无关则忽略」
-- [ ] Python 客户端对 429/5xx 与网络错误退避重试、完整操作超时；同会话内输入完全相同的重复 `vision_glance` 复用上一次成功结果，输入变化或失败不命中缓存
-- [ ] 所有远程/本地工具的 stdout 都通过 JSON 契约校验后才回给模型；契约违反映射为稳定错误类别
-- [ ] 集成测试使用假上游覆盖成功/重试/超时/协议变体；无真实 key 也能完整验证工具路径
-- [ ] headless 真实调用验收：`vision_ground → vision_crop → vision_pixel_diff` 整条链可运行（有 key 走真上游，无 key 走假上游）
+- [x] `vision_glance` 支持图片问答、无问题全景描述、OCR 与多图一次比较；结果含图片信息、模式与回答，截断状态显式返回
+- [x] `vision_ground` 按目标名返回原图像素框；`vision_detect` 返回带编号的元素清单与逐字可见文字；指定区域搜索时输出仍映射回原图坐标，越界或退化框被拒绝
+- [x] `vision_crop` 把像素框裁成文件；`vision_pixel_diff` 返回差异比例、最差区域框并产出热力图与报告；`vision_dominant_colors` 返回区域主色分布，并支持候选色打分
+- [x] 文件型产物先写临时 staging、校验通过后原子提交到工作区产物目录；模型可见结果是结构化描述（路径/大小/类型/来源工具），可直接喂给后续工具
+- [x] 远程操作凭据使用 DSH Credential 引用，每次调用现取现用、只注入子进程环境；日志、错误与工具结果均不含密钥，上游错误正文脱敏
+- [x] 视觉协议与 focus hint 提示词只有单一来源；hint 被明确标注为「只用于判断重点，无关则忽略」
+- [x] Python 客户端对 429/5xx 与网络错误退避重试、完整操作超时；同会话内输入完全相同的重复 `vision_glance` 复用上一次成功结果，输入变化或失败不命中缓存
+- [x] 所有远程/本地工具的 stdout 都通过 JSON 契约校验后才回给模型；契约违反映射为稳定错误类别
+- [x] 集成测试使用假上游覆盖成功/重试/超时/协议变体；无真实 key 也能完整验证工具路径
+- [x] headless 真实调用验收：`vision_ground → vision_crop → vision_pixel_diff` 整条链可运行（有 key 走真上游，无 key 走假上游）
 
 ## 完成记录（由执行者填写）
 
 - 验证命令与结果摘要：
+  - `cd vision-bridge && npm run verify` → 门禁 OK、tsc 0 error、`node --test` 45 用例全绿（01 的 33 个 + 02 的 12 个）。
+  - 假上游（node:http 本地 OpenAI-compatible 端点）集成测试 `test/vision.tools.integration.test.js` 覆盖：glance 描述/问答/OCR/多图/互斥校验/`finish_reason=length` 截断标记；凭据 `Bearer` 进上游、错误正文（500 回显 key）不含密钥；429 两次退避后成功（3 个请求）；网络挂死 → Python 硬超时（3 次尝试耗尽）；Host 300ms 兜底 SIGKILL → `timeout` 类别；ground 归一化框 → 原图像素、region 裁剪后映射回原图、退化框拒绝；detect 带编号 + 逐字文字；crop 产物 staging→原子提交（不覆盖输入）；pixel_diff 比例/最差区域/热力图+报告；dominant_colors 主色占比≈100 + 候选色 winner；glance 会话级缓存（相同输入 1 个请求、变化 2 个、失败不缓存 2×3）；headless 全链路 ground→crop→pixel_diff（同图比较 ratioPct=0）。
+  - 真实系统 python3 跑通本地三件套子命令（crop/pixel_diff/dominant_colors），结果 JSON 符合契约。
+  - 提示词单源断言（`test/prompts.test.js`）：明眼人协议正文只在 `runtime/dsh_vision/prompts.py` 出现一次；focus hint 截尾 500 字符且前缀「重点（只用于判断重点，与图无关请忽略）」。
 - 遗留问题（若有）：
+  - 远程链路未接真实视觉 key（按票设计用假上游验证工具路径）；用户装配后只需在 bundle 配置行填 `endpoint`/`model`/`credential`（DSH Credential 引用）即可用真上游。
+  - Anthropic 协议本票不要求，Python 客户端只实现 OpenAI-compatible。
+  - hint 通道已在 Python 侧冻结（`prompts.focus_hint` + spec.hint），Host 侧由 03 票的 intent 提取接入。

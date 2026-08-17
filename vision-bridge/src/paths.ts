@@ -3,7 +3,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { VisionError } from './errors.js'
 
-export interface ArtifactDescriptor {
+export type ArtifactDescriptor = {
   path: string
   filename: string
   mimeType: string

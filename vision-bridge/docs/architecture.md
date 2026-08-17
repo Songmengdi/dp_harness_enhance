@@ -23,6 +23,9 @@ Python runtime      python -m dsh_vision <sub> --spec '<json>'（独立 venv，�
 | 运行时管理 | `src/runtime-manager.ts` | managed：`python3 -m venv` → pip 按 `runtime/requirements.lock` 安装 → probe 探针；失败返回可修复错误文案；05 票加候选→原子切换 |
 | 路径与产物 | `src/paths.ts` | 输入 realpath 围栏（会话工作区 + allowedDirs，符号链接逃逸拒绝）；产物：staging 目录写入 → 格式探针 → 同文件系统原子 rename 提交 |
 | 能力判定 | `src/capabilities.ts` | `llm.resolveModelInfo` 判原生图片能力；成功正缓存，失败 TTL 30s |
+| 远程视觉 | `src/remote.ts` | D7 凭据管线：只存 DSH Credential 引用，每次现取现用、只进子进程环境；glance 会话级缓存（key = 图片内容哈希 + query/ocr/region + 端点/模型/语言/凭据哈希） |
+| 提示词单源 | `runtime/dsh_vision/prompts.py` | 明眼人协议 + focus hint 模板唯一来源；hint 截尾 500 字符并声明「只用于判断重点，与图无关请忽略」 |
+| 远程客户端 | `runtime/dsh_vision/vision_client.py` | OpenAI-compatible；429/5xx/网络错误退避重试（最多 2 次）；整操作硬超时；空/非结构化回答 = output 错误；`finish_reason==length` → `truncated:true` |
 | Python 契约 | `runtime/dsh_vision/contract.py` | stdout 单段 JSON envelope；退出码 0/2/3/4/5/6 = ok/input/config/upstream/runtime/output；stderr 脱敏（凭据值替换） |
 
 ## 契约（Host ↔ Python）
@@ -44,6 +47,11 @@ Python runtime      python -m dsh_vision <sub> --spec '<json>'（独立 venv，�
 | python | `python3` | 建 venv 的基础解释器 |
 | maxConcurrency | `2` | 视觉操作并发信号量上限 |
 | defaultTimeoutMs | `120000` | 默认整操作超时 |
+| endpoint / model | 空 | 视觉 API 端点与模型（空 = 远程工具报 config 错误） |
+| credential | 空 | DSH Credential 引用名（POSIX 标识符；只存引用） |
+| language | `中文` | 进视觉 prompt 与 glance 缓存键 |
+| visionTimeoutMs / maxRetries | `90000` / `2` | 远程硬超时与 429/5xx/网络退避重试上限 |
+| glanceCacheTtlMs | `1800000` | glance 会话级成功缓存 TTL（0 关闭） |
 
 ## 错误类别（稳定）
 
@@ -61,4 +69,5 @@ Host 侧统一成 `VisionError(category, message)`，工具失败时模型看到
 
 - 引导工具 `vision_activate`：无参；输出 `{activated, tools:[...]}`；已激活返回 `activated:false`；激活后对本 Agent 隐藏。
 - `vision_media(path)` → 时长/分辨率/流/编码 JSON；`vision_frames(path, times≤8)` → `{dir, frames:[{time,path}]}`（帧文件已在工作区产物目录）。
-- 其余 10 个工具与 seamless 桥的冻结契约见各票文件。
+- 02 票六个工具（glance/ground/detect/crop/pixel_diff/dominant_colors）与产物/缓存/凭据契约见 `issues/02`；ground/detect 指定 region 搜索时输出坐标仍映射回原图。
+- 03/04 的剩余工具与 seamless 桥的冻结契约见各票文件。

@@ -163,10 +163,12 @@ preset 选择器里选 **工具引导标准模式** 或 **工具引导创造模�
 ### 发布安装(推荐)
 
 ```sh
-dsh plugin --profile <profile> add \
+dsh plugin --profile web add \
   "github:Songmengdi/dp_harness_enhance#dsh-tool-bootstrap-v0.5.0&path:dsh-tool-bootstrap"
 npm run sync:preset:release   # 让 preset 引用 profile 里已安装的发布包
 ```
+
+> 目标 profile 不是 `web` 时,把 `web` 换成你的 profile 名。
 
 ## 验证加载
 

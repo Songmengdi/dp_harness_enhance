@@ -27,9 +27,11 @@ pnpm install
 npm run verify    # 门禁 + typecheck + build + Python 语法检查 + 全量测试 + 打包 dry-run
 
 # 装进本地 profile（dsh plugin add = pnpm add + bundles 清单 reconcile）
-dsh plugin --profile <profile> add -w <本目录绝对路径>
-dsh --profile <profile> --dump-config   # 末尾应出现 dsh-vision-bridge 层
+dsh plugin --profile web add -w <本目录绝对路径>
+dsh --profile web --dump-config   # 末尾应出现 dsh-vision-bridge 层
 ```
+
+> 目标 profile 不是 `web` 时,把 `web` 换成你的 profile 名。
 
 远程工具需要一行装配配置（D8，配置写在 bundle 装配行）。在 profile 的
 `cordis.patch.yml` 里按 id 覆盖：
@@ -51,7 +53,7 @@ dsh --profile <profile> --dump-config   # 末尾应出现 dsh-vision-bridge 层
 
 - 热更新：settings 里 `dsh-vision-bridge` 段（schema 同装配 config）→ 校验 →
   staging 准备候选运行时 → 原子切换 generation；失败保留旧运行时并记录原因。
-- 卸载：`dsh plugin --profile <profile> remove dsh-vision-bridge`；
+- 卸载：`dsh plugin --profile web remove dsh-vision-bridge`；
   插件卸载时先取消活动视觉操作，再逐 Agent 回收工具与 skill。
 
 ## 测试与验证

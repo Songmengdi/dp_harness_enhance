@@ -67,6 +67,6 @@ function imageBridgeActive(ctx) {
 
 ## 卸载
 
-`dsh plugin --profile <profile> remove dsh-vision-bridge`。
+`dsh plugin --profile web remove dsh-vision-bridge`。
 插件卸载顺序：取消活动视觉操作并等待 → 逐 Agent 回收工具与 skill → 关运行时管理器；
 卸载后装配清单与工具目录无残留。

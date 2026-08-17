@@ -55,30 +55,32 @@ dsh Web GUI 会话优化插件:
 本包是标准 dsh 组合包(声明 `dsh.bundle.patch` 与 `dsh.client`),`dsh plugin add` 会自动写入 profile 依赖并追加 bundle 层,无需手动 patch。从 GitHub Release 下载的 tarball 安装(预构建产物,**无需构建授权**):
 
 ```sh
-dsh plugin --profile <name> add https://github.com/Songmengdi/dp_harness_enhance/releases/download/dsh-session-ui-enhance-v1.3.0/dsh-session-ui-enhance-1.3.0.tgz
+dsh plugin --profile web add https://github.com/Songmengdi/dp_harness_enhance/releases/download/dsh-session-ui-enhance-v1.8.1/dsh-session-ui-enhance-1.8.1.tgz
 ```
 
 本地 tarball 同理:
 
 ```sh
-dsh plugin --profile <name> add ./dsh-session-ui-enhance-1.3.0.tgz
+dsh plugin --profile web add ./dsh-session-ui-enhance-1.8.1.tgz
 ```
+
+> 目标 profile 不是 `web` 时,把 `web` 换成你的 profile 名。
 
 > pnpm 9.x 用户:该版本对 dsh 生成的 workspace 布局会报 `ERR_PNPM_ADDING_TO_ROOT`,在 `add` 后追加 `-w` 即可(或在该 profile 目录写入 `.npmrc`:`ignore-workspace-root-check=true`);pnpm ≥10 直接执行上面的命令。
 
 验证(应看到 `# == dsh-session-ui-enhance` 层与 `session-ui-enhance` 行):
 
 ```sh
-dsh --profile <name> --dump-config
-dsh --profile <name>
+dsh --profile web --dump-config
+dsh --profile web
 ```
 
 ## 安装(备选:GitHub 源码,pin tag + 构建授权)
 
-git 安装拉取的是源码,本包自带自包含的 `prepare` 构建(tsc + tsdown,不需要 monorepo 环境);pnpm ≥10 需要显式允许构建。**务必锁定 tag 或 commit**,防止后续推送改变实际运行内容(担心 tag 被移动时,可用 tag 对应的 commit SHA 替换 `#dsh-session-ui-enhance-v1.3.0`):
+git 安装拉取的是源码,本包自带自包含的 `prepare` 构建(tsc + tsdown,不需要 monorepo 环境);pnpm ≥10 需要显式允许构建。**务必锁定 tag 或 commit**,防止后续推送改变实际运行内容(担心 tag 被移动时,可用 tag 对应的 commit SHA 替换 `#dsh-session-ui-enhance-v1.8.1`):
 
 ```sh
-dsh plugin --profile <name> add 'github:Songmengdi/dp_harness_enhance#dsh-session-ui-enhance-v1.3.0&path:dsh-session-ui-enhance'
+dsh plugin --profile web add 'github:Songmengdi/dp_harness_enhance#dsh-session-ui-enhance-v1.8.1&path:dsh-session-ui-enhance'
 ```
 
 首次 `add` 会因构建未授权失败,按提示把 pnpm 打印的包键写入该 profile 的 `pnpm-workspace.yaml`(pnpm 10 用 `onlyBuiltDependencies`,旧版用 `allowBuilds`,两种都写最稳妥):

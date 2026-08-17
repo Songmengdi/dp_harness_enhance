@@ -27,10 +27,12 @@
 ## 安装
 
 ```sh
-dsh plugin --profile <你的profile> add dsh-fs-observation-persistence@latest
+dsh plugin --profile web add dsh-fs-observation-persistence@latest
 # 或本地 tarball:
-dsh plugin --profile <你的profile> add ./dsh-fs-observation-persistence-0.2.0.tgz
+dsh plugin --profile web add ./dsh-fs-observation-persistence-0.2.1.tgz
 ```
+
+> 目标 profile 不是 `web` 时,把 `web` 换成你的 profile 名。
 
 profile 的 `package.json` 会新增依赖,`dsh.profile.bundles` 自动收录本包(组合行由包内 `cordis.patch.yml` 提供,id 为 `fs-observation-persistence`)。重启 `dsh web` 生效(host 插件无热载)。
 

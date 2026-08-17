@@ -47,9 +47,11 @@ find /opt/homebrew/lib/node_modules/@deepseek-ai/dsh \
 // 图片消息放行给插件（agent/pre-step 会把图片落地为路径，纯文本模型照常工作）。
 function imageBridgeActive(ctx) {
 	try {
-		const loader = ctx.get('loader');
+		const loader = ctx.loader?.entries ? ctx.loader : ctx.get('loader');
 		for (const entry of loader.entries()) {
-			if (entry.id === 'dsh-vision-bridge' && entry.disabled !== true) return true;
+			const id = String(entry.id);
+			// 条目 id 会带根 include 前缀（形如 include:dsh-vision-bridge），两端都要匹配
+			if ((id === 'dsh-vision-bridge' || id.endsWith(':dsh-vision-bridge')) && entry.disabled !== true) return true;
 		}
 	} catch (e) {
 	}

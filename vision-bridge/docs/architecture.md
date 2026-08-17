@@ -29,6 +29,7 @@ Python runtime      python -m dsh_vision <sub> --spec '<json>'（独立 venv，�
 | skill 单源 | `skills/vision-bridge/SKILL.md` | 完整明眼人协议唯一来源；按 Agent 注册（文本模型会话才可见）；加载即激活（返回内容标记判定） |
 | 提示词单源 | `runtime/dsh_vision/prompts.py` | 明眼人协议 + focus hint 模板唯一来源；hint 截尾 500 字符并声明「只用于判断重点，与图无关请忽略」 |
 | 远程客户端 | `runtime/dsh_vision/vision_client.py` | OpenAI-compatible；429/5xx/网络错误退避重试（最多 2 次）；整操作硬超时；空/非结构化回答 = output 错误；`finish_reason==length` → `truncated:true` |
+| 04 本地算法 | `runtime/dsh_vision/commands/{trace,extract_foreground,long_screenshot_ocr,html_screenshot}.py` | trace：小图放大 + Otsu + Moore 轮廓 → 原图坐标 SVG（安全校验）；前景：边界泛洪 + 连通分量 → 透明 PNG；长截图：低内容切口分块 + 逐块 OCR + 重叠去重 + 审计 + 同名 run 复用；HTML 截图：无头浏览器（禁网 + 一次性 profile + mock keychain，产物文件为准并终止进程） |
 | Python 契约 | `runtime/dsh_vision/contract.py` | stdout 单段 JSON envelope；退出码 0/2/3/4/5/6 = ok/input/config/upstream/runtime/output；stderr 脱敏（凭据值替换） |
 
 ## 契约（Host ↔ Python）

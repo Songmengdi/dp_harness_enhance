@@ -52,7 +52,7 @@ export class RemoteVision {
   }
 
   /** 远程子命令统一入口：配置校验 → 现取凭据 → 注入环境 → subprocess。 */
-  async run(sub: 'glance' | 'ground' | 'detect', spec: Record<string, unknown>, opts: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<unknown> {
+  async run(sub: 'glance' | 'ground' | 'detect' | 'long_screenshot_ocr', spec: Record<string, unknown>, opts: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<unknown> {
     if (!this.config.endpoint.trim() || !this.config.model.trim()) {
       throw new VisionError('config', '未配置视觉端点/模型：请在 bundle 装配行的 config 里填 endpoint 与 model（D8）')
     }

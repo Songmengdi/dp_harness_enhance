@@ -6,7 +6,7 @@ import json
 import sys
 
 from . import contract
-from .commands import crop, dominant_colors, frames, glance, ground, media, pixel_diff, probe
+from .commands import crop, dominant_colors, extract_foreground, frames, glance, ground, html_screenshot, long_screenshot_ocr, media, pixel_diff, probe, trace
 
 SUBCOMMANDS = {
     'probe': probe,
@@ -18,6 +18,10 @@ SUBCOMMANDS = {
     'crop': crop,
     'pixel_diff': pixel_diff,
     'dominant_colors': dominant_colors,
+    'trace': trace,
+    'extract_foreground': extract_foreground,
+    'long_screenshot_ocr': long_screenshot_ocr,
+    'html_screenshot': html_screenshot,
 }
 
 

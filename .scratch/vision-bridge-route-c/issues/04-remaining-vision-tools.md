@@ -44,12 +44,12 @@ out: { source:{path,bytes}, viewport:{width,height}, rendered:{width,height}, ar
 
 ## 验收标准
 
-- [ ] `vision_trace` 把扁平高对比图形恢复成 SVG 几何（路径数/缩放/尺寸结构化返回）；小图标先放大分析但输出保持原图坐标；提交前校验 SVG 合法且无危险结构
-- [ ] `vision_extract_foreground` 输出透明 PNG，并返回选区、连通分量数与前景覆盖率；自动模式失败时可手工指定区域/排除色
-- [ ] `vision_long_screenshot_ocr` 找到低内容切口分块、逐块 OCR、合并重复重叠，交付合并 Markdown、清单、边界审计与分块产物；`splitOnly` 模式不发起任何远程请求；同名运行可复用既有分块
-- [ ] `vision_html_screenshot` 只接受工作区内的本地 HTML 文件，按指定视口输出 PNG；浏览器以禁用网络 + 一次性临时 profile 运行，调用后清理临时 profile
-- [ ] 提交可复现示例：本地 HTML 渲染 → `vision_pixel_diff` 度量 → 按最差区域迭代，示例含参考图、初版、终版与数值验收结果
-- [ ] 每个工具均有确定性单测；HTML 渲染与长截图 OCR 有集成测试；错误路径（坏图/越界框/非法 HTML 引用）返回稳定错误类别
+- [x] `vision_trace` 把扁平高对比图形恢复成 SVG 几何（路径数/缩放/尺寸结构化返回）；小图标先放大分析但输出保持原图坐标；提交前校验 SVG 合法且无危险结构
+- [x] `vision_extract_foreground` 输出透明 PNG，并返回选区、连通分量数与前景覆盖率；自动模式失败时可手工指定区域/排除色
+- [x] `vision_long_screenshot_ocr` 找到低内容切口分块、逐块 OCR、合并重复重叠，交付合并 Markdown、清单、边界审计与分块产物；`splitOnly` 模式不发起任何远程请求；同名运行可复用既有分块
+- [x] `vision_html_screenshot` 只接受工作区内的本地 HTML 文件，按指定视口输出 PNG；浏览器以禁用网络 + 一次性临时 profile 运行，调用后清理临时 profile
+- [x] 提交可复现示例：本地 HTML 渲染 → `vision_pixel_diff` 度量 → 按最差区域迭代，示例含参考图、初版、终版与数值验收结果
+- [x] 每个工具均有确定性单测；HTML 渲染与长截图 OCR 有集成测试；错误路径（坏图/越界框/非法 HTML 引用）返回稳定错误类别
 
 ## 完成记录（由执行者填写）
 

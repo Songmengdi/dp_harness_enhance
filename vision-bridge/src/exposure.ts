@@ -45,7 +45,9 @@ export function activationSection(): string {
     '# 视觉桥（vision-bridge）——本会话已激活',
     '可用工具：vision_glance（看图/问答/OCR）· vision_ground（定位）· vision_detect（盘点）· ',
     'vision_crop（裁剪）· vision_pixel_diff（像素差异）· vision_dominant_colors（主色）· ',
-    'vision_media / vision_frames（媒体）。',
+    'vision_media / vision_frames（媒体）· vision_trace（SVG 几何）· ',
+    'vision_extract_foreground（透明 PNG）· vision_long_screenshot_ocr（长截图 OCR）· ',
+    'vision_html_screenshot（HTML 截图）。',
     '完整使用协议（明眼人协议）见 skill：调用 skill 工具加载 `vision-bridge`。',
   ].join('\n')
 }

@@ -17,6 +17,10 @@ description: 视觉桥（vision-bridge）——纯文本模型指挥视觉工具
 - `vision_pixel_diff`（本地）：两图逐像素差异（比例/最差区域/热力图/报告）。
 - `vision_dominant_colors`（本地）：区域主色分布 + 候选色打分。
 - `vision_media` / `vision_frames`（本地）：媒体元数据 / 视频抽帧。
+- `vision_trace`（本地）：扁平图形 → SVG 几何（小图标先放大分析，坐标按原图）。
+- `vision_extract_foreground`（本地）：图标/logo → 透明 PNG（auto 失败用 manual 重试）。
+- `vision_long_screenshot_ocr`（本地切分 + 远程 OCR）：长截图按低内容切口分块、合并重叠、边界审计；splitOnly 不发远程。
+- `vision_html_screenshot`（本地浏览器）：工作区内 HTML → 视口 PNG（禁网 + 一次性临时 profile）。
 
 ## 明眼人协议（指挥视觉模型的方法）
 
@@ -30,7 +34,8 @@ description: 视觉桥（vision-bridge）——纯文本模型指挥视觉工具
 ## 组合套路
 
 - 定位 → 裁剪：`vision_ground` 拿框 → `vision_crop` 按框裁出文件 → 把裁剪产物喂给下一步。
-- 重建 → 验证：参考图 vs 你的实现截图 → `vision_pixel_diff` 给数值证据，按最差区域迭代。
-- 长截图：先 `vision_crop` 分段再逐段 `vision_glance`（ocr=true）。
+- 重建 → 验证：参考图 vs 你的实现截图 → `vision_pixel_diff` 给数值证据，按最差区域迭代（HTML 用 `vision_html_screenshot` 出图）。
+- 长截图：直接 `vision_long_screenshot_ocr`（分块 + 合并 + 边界审计）。
+- 图形素材重建：`vision_trace` 恢复 SVG 几何；图标抠图用 `vision_extract_foreground`。
 
 <!-- VISION_BRIDGE_ROUTE_C_SKILL_MARKER -->

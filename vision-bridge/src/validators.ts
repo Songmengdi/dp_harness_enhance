@@ -106,6 +106,43 @@ function validateDominantColors(value: unknown): void {
   }
 }
 
+function validateTrace(value: unknown): void {
+  if (!isObject(value)) throw new Error('trace 结果必须是对象')
+  requireString(value.svg, 'svg')
+  if (typeof value.paths !== 'number' || typeof value.width !== 'number' || typeof value.height !== 'number' || typeof value.scale !== 'number') {
+    throw new Error('trace 结果字段缺失或类型错误')
+  }
+}
+
+function validateExtractForeground(value: unknown): void {
+  if (!isObject(value)) throw new Error('extract_foreground 结果必须是对象')
+  validateBox(value.box)
+  if (typeof value.components !== 'number' || typeof value.coveragePct !== 'number') throw new Error('components/coveragePct 必须是数字')
+  if (typeof value.width !== 'number' || typeof value.height !== 'number') throw new Error('宽高必须是数字')
+}
+
+function validateLongOcr(value: unknown): void {
+  if (!isObject(value)) throw new Error('long_screenshot_ocr 结果必须是对象')
+  if (typeof value.chunks !== 'number' || typeof value.complete !== 'boolean') throw new Error('chunks/complete 形状非法')
+  requireString(value.runDir, 'runDir')
+  const files = requireArray(value.chunkFiles, 'chunkFiles')
+  if (files.length === 0) throw new Error('chunkFiles 不能为空')
+  if (value.complete) {
+    requireString(value.mergedFile, 'mergedFile')
+    requireString(value.manifestFile, 'manifestFile')
+    requireString(value.auditFile, 'auditFile')
+  }
+}
+
+function validateHtmlShot(value: unknown): void {
+  if (!isObject(value)) throw new Error('html_screenshot 结果必须是对象')
+  if (!isObject(value.source)) throw new Error('source 必须是对象')
+  requireString(value.source.path, 'source.path')
+  if (typeof value.source.bytes !== 'number') throw new Error('source.bytes 必须是数字')
+  if (!isObject(value.viewport) || !isObject(value.rendered)) throw new Error('viewport/rendered 必须是对象')
+  if (typeof value.viewport.width !== 'number' || typeof value.rendered.width !== 'number') throw new Error('视口宽高必须是数字')
+}
+
 export function makeValidators(): Record<string, (value: unknown) => void> {
   return {
     media: validateMedia,
@@ -116,6 +153,9 @@ export function makeValidators(): Record<string, (value: unknown) => void> {
     crop: validateCrop,
     pixel_diff: validatePixelDiff,
     dominant_colors: validateDominantColors,
-    // 04 票的工具在此追加。
+    trace: validateTrace,
+    extract_foreground: validateExtractForeground,
+    long_screenshot_ocr: validateLongOcr,
+    html_screenshot: validateHtmlShot,
   }
 }

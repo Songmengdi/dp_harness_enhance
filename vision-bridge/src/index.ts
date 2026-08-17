@@ -22,6 +22,10 @@ import { defineGroundTool, defineDetectTool } from './tools/ground.js'
 import { defineCropTool } from './tools/crop.js'
 import { definePixelDiffTool } from './tools/pixel-diff.js'
 import { defineDominantColorsTool } from './tools/dominant-colors.js'
+import { defineTraceTool } from './tools/trace.js'
+import { defineExtractForegroundTool } from './tools/extract-foreground.js'
+import { defineLongScreenshotOcrTool } from './tools/long-screenshot-ocr.js'
+import { defineHtmlScreenshotTool } from './tools/html-screenshot.js'
 
 export const name = 'dsh-vision-bridge'
 export const inject = ['attachments', 'agents', 'credentials', 'systemPrompt']
@@ -94,8 +98,13 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
   const cropTool = defineCropTool(toolEnv)
   const pixelDiffTool = definePixelDiffTool(toolEnv)
   const dominantColorsTool = defineDominantColorsTool(toolEnv)
+  const traceTool = defineTraceTool(toolEnv)
+  const extractForegroundTool = defineExtractForegroundTool(toolEnv)
+  const longScreenshotOcrTool = defineLongScreenshotOcrTool(remoteEnv)
+  const htmlScreenshotTool = defineHtmlScreenshotTool(toolEnv)
   const execTools: ToolDefinition[] = [
     mediaTool, framesTool, glanceTool, groundTool, detectTool, cropTool, pixelDiffTool, dominantColorsTool,
+    traceTool, extractForegroundTool, longScreenshotOcrTool, htmlScreenshotTool,
   ]
 
   const exposure = new Exposure(ctx, {

@@ -179,21 +179,40 @@ export class Exposure {
     })()
   }
 
+  /**
+   * 注册 vision-bridge skill 到当前 agent 的 skills 服务。
+   *
+   * 注意：不能写 `agent.ctx.skills.register(...)`。dsh 的 AgentLoop 只 inject
+   * agents/sessions/llm/tools/systemPrompt，没有 inject `skills`；直接属性访问
+   * 在独立 fiber 下会抛 `cannot get property "skills" without inject`，异常被
+   * 吞掉后 skill 永远不会出现在 `<available_skills>`。必须用 `agent.ctx.get('skills')`
+   * 显式获取服务。这里也容忍服务暂不可用：下次 activate/handleAgentCreated 会重试。
+   */
+  private ensureSkill(agent: Agent, state: AgentState): void {
+    if (state.skillDisposer !== null) return
+    try {
+      const skills = agent.ctx.get('skills')
+      if (!skills || typeof skills.register !== 'function') {
+        this.opts.logger.warn({ agent: agent.id }, 'skills service unavailable — skill registration skipped')
+        return
+      }
+      state.skillDisposer = skills.register({
+        name: this.opts.skillDefinition.name,
+        description: this.opts.skillDefinition.description,
+        content: this.opts.skillDefinition.content,
+        source: 'bundled',
+      })
+      this.opts.logger.info({ agent: agent.id }, 'skill vision-bridge registered')
+    } catch (e) {
+      this.opts.logger.error({ agent: agent.id }, `skill register failed: ${String(e)}`)
+    }
+  }
+
   private completeSetup(agent: Agent, state: AgentState): void {
     if (state.activated) return
-    if (state.skillDisposer === null) {
-      try {
-        state.skillDisposer = agent.ctx.skills.register({
-          name: this.opts.skillDefinition.name,
-          description: this.opts.skillDefinition.description,
-          content: this.opts.skillDefinition.content,
-          source: 'bundled',
-        })
-        this.opts.logger.info({ agent: agent.id }, 'skill vision-bridge registered')
-      } catch (e) {
-        this.opts.logger.error({ agent: agent.id }, `skill register failed: ${String(e)}`)
-      }
-    }
+    // 按 router-spec/router-standard 的最小暴露原则：初始阶段不把 skill 放进 catalog，
+    // 只保留引导工具。第一次遇到图（read/bash/paste/vision_activate/会话证据）时，
+    // activate() 内部会 ensureSkill() 把 skill 和工具一起注入。
     if (this.hasActivationEvidence(agent)) {
       this.activate(agent, 'session-evidence')
       return
@@ -216,12 +235,15 @@ export class Exposure {
   activate(agent: Agent, reason: string): ActivateResult {
     const state = this.stateOf(agent)
     if (state.activated) {
+      // 已激活也可能因早期 skills 服务未就绪而缺 skill；这里补一次，幂等。
+      this.ensureSkill(agent, state)
       return { activated: false, tools: this.opts.execToolNames() }
     }
     if (!this.opts.runtimeReady()) {
       this.opts.logger.warn({ agent: agent.id, reason }, 'activation deferred — runtime not ready')
       return { activated: false, tools: [] }
     }
+    this.ensureSkill(agent, state)
     state.activated = true
     state.activationReason = reason
     const names: string[] = []

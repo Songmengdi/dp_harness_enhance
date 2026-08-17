@@ -3,7 +3,7 @@
   "name": "dsh Browser Use",
   "version": "0.1.0",
   "description": "Bridge between dsh and the user's real Chrome for Codex/ZCode-style Browser Use.",
-  "permissions": ["tabs", "scripting", "storage", "windows"],
+  "permissions": ["tabs", "scripting", "storage", "windows", "debugger"],
   "host_permissions": [
     "http://127.0.0.1/*",
     "http://localhost/*",

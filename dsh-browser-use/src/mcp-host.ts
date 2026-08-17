@@ -104,8 +104,14 @@ export async function startNodeReplBridge(
           { type: 'text' as const, text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) },
         ],
       },
-      async execute(args: unknown) {
-        const result = await client.callTool(tool.name, (args ?? {}) as Record<string, unknown>)
+      async execute(args: unknown, exec: unknown) {
+        const sessionId = (exec as { agent?: { session?: { id?: string } } })?.agent?.session?.id ?? 'default'
+        const rawArgs = (args ?? {}) as Record<string, unknown>
+        const meta = {
+          ...((rawArgs._meta as Record<string, unknown> | undefined) ?? {}),
+          sessionId,
+        }
+        const result = await client.callTool(tool.name, { ...rawArgs, _meta: meta })
         const text = (result.content ?? [])
           .filter((block) => block.type === 'text' && block.text !== undefined)
           .map((block) => block.text)

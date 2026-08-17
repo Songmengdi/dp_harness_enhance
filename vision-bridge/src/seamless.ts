@@ -143,7 +143,7 @@ export class Seamless {
         kind: 'deny',
         reason:
           '当前会话模型不支持图片输入，read 读不了这张图。\n' +
-          '用 vision_glance 看图/问答（或 vision_ground 定位 + vision_crop 裁剪）；完整方法见 skill：vision-bridge。',
+          '用 vision_glance 看图/问答（或 vision_ground 定位 + vision_crop 裁剪）；可调用 skill：vision-bridge 加载完整协议。',
       }
     } catch (e) {
       return next()

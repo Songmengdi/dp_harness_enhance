@@ -12,6 +12,7 @@ export class ExtensionBackend {
   name = 'User Chrome (dsh extension)'
 
   private transport: ExtensionTransport | undefined
+  owner: string | undefined
 
   setTransport(transport: ExtensionTransport | undefined): void {
     this.transport = transport
@@ -19,6 +20,27 @@ export class ExtensionBackend {
 
   get connected(): boolean {
     return this.transport?.isConnected() ?? false
+  }
+
+  /** 尝试把扩展后端分配给某个会话；已被其他会话占用时返回 false。 */
+  claim(sessionId: string): boolean {
+    const key = sessionId || 'default'
+    if (this.owner && this.owner !== key) return false
+    this.owner = key
+    return true
+  }
+
+  async release(sessionId: string): Promise<void> {
+    const key = sessionId || 'default'
+    if (this.owner !== key) return
+    this.owner = undefined
+    if (!this.transport?.isConnected()) return
+    try {
+      const id = Math.floor(Math.random() * 0x7fffffff)
+      await this.transport.send({ type: 'command', id, command: { method: 'clearAgentTabs' } })
+    } catch {
+      // 扩展可能已经断开；忽略释放时的清理失败。
+    }
   }
 
   descriptor() {

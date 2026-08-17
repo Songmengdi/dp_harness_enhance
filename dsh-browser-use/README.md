@@ -1,13 +1,13 @@
 # dsh-browser-use
 
-ZCode 式浏览器自动化插件：给 dsh 一个**持久浏览器**，Agent 可以打开网页、点击、填表、滚动、截图、切换标签页，并在会话内新增一个「浏览器」标签页实时查看画面。不依赖社区插件，使用 Playwright + 本机 Chrome/Edge。
+ZCode 式浏览器自动化插件：给 dsh 一个**持久浏览器**，Agent 可以打开网页、点击、填表、滚动、截图、切换标签页。不依赖社区插件，使用 Playwright + 本机 Chrome/Edge。
 
 ## 能力
 
 - **Host 浏览器工具**：`browser_open` / `browser_navigate` / `browser_click` / `browser_type` / `browser_press` / `browser_select` / `browser_scroll` / `browser_snapshot` / `browser_get_text` / `browser_get_html` / `browser_screenshot` / `browser_wait` / `browser_back` / `browser_forward` / `browser_reload` / `browser_new_tab` / `browser_switch_tab` / `browser_close_tab` / `browser_list_tabs` / `browser_resize` / `browser_close`（`browser_eval` 默认关闭）
 - **Codex/ZCode 式 Browser Use**：插件自托管 `node_repl` MCP server，自动注册 `mcp__node_repl__js` / `mcp__node_repl__js_reset` / `mcp__node_repl__js_add_node_module_dir`；每个 `js` 调用都是 fresh kernel，通过 `agent.browsers` 驱动浏览器（`domSnapshot` → Playwright locator → act）
 - **结构化快照**：`browser_snapshot` 返回页面可见文本 + 可交互元素编号（`e1`/`e2`…），纯文本模型也能稳定操作。
-- **可见浏览器窗口**：默认以非无头模式启动本机 Chrome/Edge，用户能实时看到 Agent 的操作（类似 ZCode/Codex 的内置浏览器）；同时会话头部出现「浏览器」标签页，显示当前页面截图、地址栏、后退/前进/刷新、标签页列表，点击画面可让 Agent 点击该坐标。
+- **可见浏览器窗口**：默认以非无头模式启动本机 Chrome/Edge，用户能实时看到 Agent 的操作（类似 ZCode/Codex 的内置浏览器）。
 - **持久登录态**：浏览器使用独立 profile（默认 `$DSH_HOME/browser-use/profile`），重启 dsh 后登录状态保留。
 - **安全边界**：只允许 http/https，拒绝 `file:`/`data:`/云元数据；默认放行 localhost（开发友好），可用白/黑名单收窄；`browser_eval` 默认关闭。
 - **两个技能**：`browser-drive`（驾驶浏览器）和 `browser-walkthrough`（网页走查/回归）。
@@ -42,7 +42,7 @@ dsh plugin --profile web add ./dsh-browser-use-0.1.0.tgz
   config:
     executablePath: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
     channel: chrome            # auto: chrome -> msedge -> chromium
-    headless: false            # false = 打开可见 Chrome 窗口（默认，类 ZCode/Codex）；true = 只在 dsh 面板显示截图
+    headless: false            # false = 打开可见 Chrome 窗口（默认，类 ZCode/Codex）；true = 无可见窗口（headless 自动化）
     userDataDir: ""            # 空 = $DSH_HOME/browser-use/profile
     viewport:
       width: 1280
@@ -66,7 +66,7 @@ dsh plugin --profile web add ./dsh-browser-use-0.1.0.tgz
 - “把页面切到 375×812，看导航栏会不会重叠”
 - “走一遍订单列表 → 详情 → 返回，看筛选条件是否丢失”
 
-Agent 会调用 `browser_open` 等工具；同时点击会话头部的「浏览器」标签页可以实时看到画面。
+Agent 会调用 `browser_open` 等工具操作浏览器。
 
 ## Codex/ZCode 式 Browser Use（node_repl MCP）
 
@@ -103,6 +103,11 @@ await input.press("Enter");
 
 关闭该能力：把配置里的 `enableMcpBridge` 设为 `false`，插件只保留原 `browser_*` 工具。
 
+### 多 Agent 会话隔离
+
+- **dsh 自带浏览器（iab）**：每个 Agent 会话使用独立的浏览器实例和独立的 profile 目录。默认会话沿用 `$DSH_HOME/browser-use/profile`；其他会话使用 `$DSH_HOME/browser-use/profile/sessions/<sessionId>`。会话销毁时对应浏览器实例会自动关闭，互不干扰。
+- **真实 Chrome 扩展**：扩展桥接的是用户日常 Chrome，同一时间只允许一个 Agent 会话占用；其他会话在占用期间看不到 `extension` 后端，直到占用会话结束自动释放。
+
 ## 真实 Chrome 扩展（可选，Codex for Chrome 模式）
 
 如果你想直接操作用户**日常 Chrome**（登录态、历史、扩展都可用），可以加载 `chrome-extension/` 目录：
@@ -128,10 +133,9 @@ npm run test
 npm run verify
 ```
 
-热更新 host 代码后需重启 `dsh web`；client bundle 拷贝到 profile 后刷新页面即可。
+热更新 host 代码后需重启 `dsh web`。
 
 ## 已知边界
 
-- 会话内面板目前是“截图 + 坐标点击”的实时镜像，不是嵌入第二个真实浏览器内核；真正可见的浏览器是本机弹出的 Chrome/Edge 窗口，交互通过 Playwright 驱动该窗口完成。
 - `<input type=file>` 的文件上传需要用户手动处理。
 - 页面文字不会被当作指令；会真实提交数据的操作应先征求用户确认。

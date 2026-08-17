@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { BrowserManager } from './browser.js'
+import type { BrowserManagerRegistry } from './browser-registry.js'
 import type { BrowserUseConfig } from './config.js'
 import { isAllowedUrl } from './guard.js'
 import { clickRef, fillRef, selectRef } from './refs.js'
@@ -20,25 +20,31 @@ function cwdOf(exec: { agent?: { session?: { header?: { cwd?: string } } } }): s
   return exec.agent?.session?.header?.cwd
 }
 
+function sessionIdOf(exec: unknown): string {
+  return (exec as { agent?: { session?: { id?: string } } })?.agent?.session?.id ?? 'default'
+}
+
 function resolveWorkspacePath(cwd: string | undefined, p: string): string {
   return isAbsolute(p) ? p : resolve(cwd ?? process.cwd(), p)
 }
 
 export function registerBrowserTools(
   ctx: { tools: { register(tool: unknown): void } },
-  manager: BrowserManager,
+  registry: BrowserManagerRegistry,
   config: BrowserUseConfig,
 ): void {
   const register = (tool: ReturnType<typeof defineTool>) => ctx.tools.register(tool)
+  const managerFor = (exec: unknown) => registry.get(sessionIdOf(exec))
 
   register(defineTool({
     name: 'browser_open',
-    description: '打开（或复用）浏览器并可选导航到 URL。首次调用会启动持久浏览器；之后所有 browser_* 工具共享同一实例和标签页。',
+    description: '打开（或复用）当前会话的独立浏览器并可选导航到 URL。首次调用会为该 Agent 会话启动持久浏览器；不同 Agent 会话使用不同浏览器实例，互不干扰。',
     parameters: {
       url: { type: 'string', description: '要打开的 URL（可选；省略则打开空白页）' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       await manager.ensure()
       if (args.url) {
         const check = isAllowedUrl(args.url, config)
@@ -57,7 +63,8 @@ export function registerBrowserTools(
       url: { type: 'string', required: true, description: 'http/https URL' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const check = isAllowedUrl(args.url, config)
       if (!check.ok) throw new Error(check.reason)
       const page = await manager.navigate(check.url)
@@ -73,7 +80,8 @@ export function registerBrowserTools(
       selector: { type: 'string', description: 'CSS 选择器' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.page()
       if (args.ref) {
         await clickRef(page, args.ref)
@@ -97,7 +105,8 @@ export function registerBrowserTools(
       submit: { type: 'boolean', description: '输入后按 Enter（默认 false）' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.page()
       if (args.ref) {
         await fillRef(page, args.ref, args.text)
@@ -118,7 +127,8 @@ export function registerBrowserTools(
       key: { type: 'string', required: true, description: '按键名（Playwright Keyboard.key 格式）' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.page()
       await page.keyboard.press(args.key)
       return { ok: true }
@@ -134,7 +144,8 @@ export function registerBrowserTools(
       values: { type: 'array', items: { type: 'string' }, required: true, description: '要选中的选项值或文本' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.page()
       let selected: string[]
       if (args.ref) {
@@ -156,7 +167,8 @@ export function registerBrowserTools(
       amount: { type: 'integer', description: '滚动像素（默认 800）' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.page()
       const direction = args.direction ?? 'down'
       const amount = args.amount ?? 800
@@ -179,7 +191,8 @@ export function registerBrowserTools(
     description: '读取当前页面的结构化快照：URL、标题、可见文本、可交互元素编号列表（ref）。用 ref 操作比手写 CSS 更稳。',
     parameters: {},
     output: jsonOutput(),
-    async execute(): Promise<any> {
+    async execute(_args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.page()
       return snapshotPage(page)
     },
@@ -192,7 +205,8 @@ export function registerBrowserTools(
       selector: { type: 'string', description: 'CSS 选择器（可选）' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.page()
       if (args.selector) {
         const locator = page.locator(args.selector).first()
@@ -212,7 +226,8 @@ export function registerBrowserTools(
       selector: { type: 'string', description: 'CSS 选择器（可选，省略则返回 document.documentElement.outerHTML）' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.page()
       if (args.selector) {
         const locator = page.locator(args.selector).first()
@@ -234,8 +249,9 @@ export function registerBrowserTools(
     },
     output: jsonOutput(),
     async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.page()
-      const cwd = cwdOf(exec)
+      const cwd = cwdOf(exec as { agent?: { session?: { header?: { cwd?: string } } } })
       let target: string
       if (args.path) {
         target = resolveWorkspacePath(cwd, args.path)
@@ -269,7 +285,8 @@ export function registerBrowserTools(
     description: '当前标签页后退。',
     parameters: {},
     output: jsonOutput(),
-    async execute(): Promise<any> {
+    async execute(_args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.page()
       await page.goBack({ waitUntil: 'domcontentloaded' }).catch(() => {})
       return { url: page.url(), title: await page.title() }
@@ -281,7 +298,8 @@ export function registerBrowserTools(
     description: '当前标签页前进。',
     parameters: {},
     output: jsonOutput(),
-    async execute(): Promise<any> {
+    async execute(_args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.page()
       await page.goForward({ waitUntil: 'domcontentloaded' }).catch(() => {})
       return { url: page.url(), title: await page.title() }
@@ -293,7 +311,8 @@ export function registerBrowserTools(
     description: '重新加载当前标签页。',
     parameters: {},
     output: jsonOutput(),
-    async execute(): Promise<any> {
+    async execute(_args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.page()
       await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {})
       return { url: page.url(), title: await page.title() }
@@ -307,7 +326,8 @@ export function registerBrowserTools(
       url: { type: 'string', description: '要打开的 URL（可选）' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       let url: string | undefined
       if (args.url) {
         const check = isAllowedUrl(args.url, config)
@@ -326,7 +346,8 @@ export function registerBrowserTools(
       index: { type: 'integer', required: true, description: '标签页索引' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const page = await manager.switchTab(args.index)
       return { index: args.index, url: page.url(), title: await page.title() }
     },
@@ -339,7 +360,8 @@ export function registerBrowserTools(
       index: { type: 'integer', description: '标签页索引（默认当前）' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       await manager.closeTab(args.index)
       return { ok: true, tabs: (await manager.state()).tabs }
     },
@@ -350,7 +372,8 @@ export function registerBrowserTools(
     description: '列出当前所有标签页。',
     parameters: {},
     output: jsonOutput(),
-    async execute(): Promise<any> {
+    async execute(_args, exec): Promise<any> {
+      const manager = managerFor(exec)
       const state = await manager.state()
       return state
     },
@@ -364,7 +387,8 @@ export function registerBrowserTools(
       height: { type: 'integer', required: true, description: '高度 px' },
     },
     output: jsonOutput(),
-    async execute(args): Promise<any> {
+    async execute(args, exec): Promise<any> {
+      const manager = managerFor(exec)
       await manager.setViewport(args.width, args.height)
       const page = await manager.page()
       const viewport = page.viewportSize()
@@ -374,10 +398,11 @@ export function registerBrowserTools(
 
   register(defineTool({
     name: 'browser_close',
-    description: '关闭整个浏览器（下次任意 browser_* 工具会自动重新打开；持久登录态保留）。',
+    description: '关闭当前 Agent 会话的浏览器实例（下次任意 browser_* 工具会自动重新打开；该会话持久登录态保留）。',
     parameters: {},
     output: jsonOutput(),
-    async execute(): Promise<any> {
+    async execute(_args, exec): Promise<any> {
+      const manager = managerFor(exec)
       await manager.close()
       return { ok: true }
     },
@@ -391,7 +416,8 @@ export function registerBrowserTools(
         expression: { type: 'string', required: true, description: 'JS 表达式或函数体' },
       },
       output: jsonOutput(),
-      async execute(args): Promise<any> {
+      async execute(args, exec): Promise<any> {
+        const manager = managerFor(exec)
         const page = await manager.page()
         const result = await page.evaluate((expr) => {
           // eslint-disable-next-line no-new-func

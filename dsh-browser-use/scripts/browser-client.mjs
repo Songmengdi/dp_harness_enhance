@@ -7,6 +7,9 @@
  * `agent.documentation` to the given globals object.
  */
 
+import { readFile, readdir } from 'node:fs/promises'
+import { join, relative } from 'node:path'
+
 const BRIDGE_SYMBOL = Symbol.for('dsh.node-repl.browser-control-bridge')
 
 function readBridge(globals) {
@@ -32,6 +35,55 @@ function bytesFromBase64(base64) {
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
   return bytes
+}
+
+function filterApi(api, info) {
+  const overrides = info?.apiSupportOverrides ?? {}
+  const objects = {}
+  for (const [objectName, object] of Object.entries(api.objects ?? {})) {
+    const members = (object.members ?? []).filter((member) => overrides[member.name] !== false)
+    if (members.length > 0 || object.kind === 'property') {
+      objects[objectName] = { ...object, members }
+    }
+  }
+  return { ...api, objects }
+}
+
+async function readDocumentation(info, root) {
+  const parts = []
+  let apiJson = null
+  try {
+    apiJson = JSON.parse(await readFile(join(root, 'api.json'), 'utf8'))
+    const filtered = filterApi(apiJson, info)
+    parts.push(`# Browser Use API${apiJson.version ? ` (v${apiJson.version})` : ''}\n\n${JSON.stringify(filtered, null, 2)}`)
+  } catch (error) {
+    parts.push(`# Browser Use API\n\n> api.json unavailable: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  try {
+    const documents = JSON.parse(await readFile(join(root, 'documents.json'), 'utf8'))
+    for (const doc of documents.documents ?? []) {
+      if (doc.mode !== 'included') continue
+      const text = await readFile(join(root, doc.path), 'utf8')
+      parts.push(`# ${doc.title}\n\n${text}`)
+    }
+  } catch (error) {
+    parts.push(`> documents.json unavailable: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  try {
+    const files = await readdir(root)
+    for (const file of files.sort()) {
+      if (!file.endsWith('.md') || file === 'README.md') continue
+      const path = relative(root, join(root, file))
+      const text = await readFile(join(root, path), 'utf8')
+      parts.push(`# ${file.replace(/\.md$/, '')}\n\n${text}`)
+    }
+  } catch {
+    // optional; ignore when the docs directory is not readable
+  }
+
+  return parts.join('\n\n---\n\n')
 }
 
 function serializeMatcher(value, exact, method) {
@@ -291,10 +343,7 @@ class BrowsersFacade {
     const browser = new Browser(
       info,
       async (browserId, browserGeneration, command) => this.bridge.execute(browserId, browserGeneration, command),
-      async () => {
-        const result = await this.bridge.execute(info.id, info.generation, { method: 'list' })
-        return JSON.stringify(result, null, 2)
-      },
+      async () => readDocumentation(info, this.bridge.documentationRoot),
     )
     this.browsers.set(info.id, browser)
     return browser

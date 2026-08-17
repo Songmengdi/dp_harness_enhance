@@ -3,11 +3,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-skill'
-import { BrowserManager, defaultProfileDir } from './browser.js'
+import { defaultProfileDir } from './browser.js'
+import { BrowserManagerRegistry } from './browser-registry.js'
 import { startBroker } from './broker.js'
 import { Config, type BrowserUseConfig } from './config.js'
 import { startExtensionServer } from './extension/server.js'
-import { registerBrowserHttp } from './http.js'
 import { startNodeReplBridge } from './mcp-host.js'
 import { registerBrowserTools } from './tools.js'
 
@@ -42,20 +42,28 @@ function extractText(data: { content?: Array<{ type?: string; text?: string }> }
 }
 
 export function apply(ctx: Context, config: BrowserUseConfig): void {
-  const manager = new BrowserManager(config, defaultProfileDir())
+  const registry = new BrowserManagerRegistry(config, defaultProfileDir())
+  let extensionBackendRef: import('./extension/backend.js').ExtensionBackend | undefined
 
-  // 关闭浏览器时随插件卸载回收。
+  // 所有会话浏览器实例随插件卸载回收。
   ctx.effect(() => () => {
-    void manager.close()
+    void registry.closeAll()
   })
 
-  registerBrowserTools(ctx as never, manager, config)
-  registerBrowserHttp(ctx as never, manager, config)
+  // Agent 会话销毁时关闭该会话的独立浏览器实例，并释放真实 Chrome 扩展占用。
+  ctx.effect(() => (ctx as any).on('session/disposed', (session: any) => {
+    const sessionId = session?.id
+    if (!sessionId) return
+    void registry.dispose(sessionId)
+    extensionBackendRef?.release(sessionId)
+  }))
+
+  registerBrowserTools(ctx as never, registry, config)
 
   // Codex/ZCode 式 Browser Use broker：node_repl MCP server 通过 Unix socket
-  // 把 browser 命令路由回本插件共享的 BrowserManager。插件同时自带一个轻量
-  // MCP 客户端，把 node_repl 的 js/js_reset/js_add_node_module_dir 注册成
-  // mcp__node_repl__* 工具，无需额外安装 dsh-mcp-client。
+  // 把 browser 命令路由回本插件，并按会话路由到独立 BrowserManager。插件同时
+  // 自带一个轻量 MCP 客户端，把 node_repl 的 js/js_reset/js_add_node_module_dir
+  // 注册成 mcp__node_repl__* 工具，无需额外安装 dsh-mcp-client。
   if (config.enableMcpBridge) {
     ctx.effect(() => {
       let disposed = false
@@ -67,7 +75,8 @@ export function apply(ctx: Context, config: BrowserUseConfig): void {
             void extensionServer.close()
             return
           }
-          const broker = await startBroker(manager, config, extensionServer.backend)
+          extensionBackendRef = extensionServer.backend
+          const broker = await startBroker(registry, config, extensionServer.backend)
           if (disposed) {
             void extensionServer.close().then(() => broker.close())
             return

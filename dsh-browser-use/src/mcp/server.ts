@@ -37,20 +37,21 @@ function requestMetaFromArgs(args: Record<string, unknown>): Record<string, unkn
   return (args as { _meta?: Record<string, unknown> })._meta ?? {}
 }
 
-function buildBridgeGlobals() {
+function buildBridgeGlobals(meta: Record<string, unknown>) {
   const socketPath = process.env[BROKER_SOCKET_ENV]?.trim()
   const token = process.env[BROKER_TOKEN_ENV]?.trim()
   if (!socketPath || !token) {
     throw new Error('Browser broker is unavailable: missing DSH_BROWSER_USE_BROKER_SOCKET/TOKEN')
   }
+  const sessionId = typeof meta.sessionId === 'string' && meta.sessionId ? meta.sessionId : 'default'
   const transport = {
     list: async () => {
-      const response = await sendBrokerRequest({ op: 'list', sessionId: 'mcp' }, socketPath, token)
+      const response = await sendBrokerRequest({ op: 'list', sessionId }, socketPath, token)
       return response.browsers ?? []
     },
     execute: async (browserId: string, browserGeneration: number, command: BrowserCommand) => {
       const response = await sendBrokerRequest(
-        { op: 'execute', browserId, browserGeneration, sessionId: 'mcp', command },
+        { op: 'execute', browserId, browserGeneration, sessionId, command },
         socketPath,
         token,
       )
@@ -106,6 +107,89 @@ async function sendBrokerRequest(
   })
 }
 
+function countDelimiters(line: string): { paren: number; bracket: number; brace: number } {
+  let paren = 0
+  let bracket = 0
+  let brace = 0
+  let quote: string | null = null
+  let escaped = false
+  let lineComment = false
+  let blockComment = false
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i]
+    const next = line[i + 1]
+    if (lineComment) break
+    if (blockComment) {
+      if (ch === '*' && next === '/') {
+        blockComment = false
+        i += 1
+      }
+      continue
+    }
+    if (!quote) {
+      if (ch === '/' && next === '/') {
+        lineComment = true
+        continue
+      }
+      if (ch === '/' && next === '*') {
+        blockComment = true
+        i += 1
+        continue
+      }
+      if (ch === '"' || ch === "'" || ch === '`') {
+        quote = ch
+        continue
+      }
+      if (ch === '(') paren += 1
+      else if (ch === ')') paren -= 1
+      else if (ch === '[') bracket += 1
+      else if (ch === ']') bracket -= 1
+      else if (ch === '{') brace += 1
+      else if (ch === '}') brace -= 1
+    } else {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (ch === '\\') {
+        escaped = true
+        continue
+      }
+      if (ch === quote) quote = null
+    }
+  }
+  return { paren, bracket, brace }
+}
+
+function splitFinalExpression(code: string): { prefix: string; expression: string } | null {
+  const trimmed = code.replace(/\s+$/, '')
+  if (!trimmed) return null
+  const lines = trimmed.split('\n')
+  let exprStart = -1
+  let paren = 0
+  let bracket = 0
+  let brace = 0
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i]!
+    if (exprStart < 0) {
+      if (line.trim() === '') continue
+      exprStart = i
+    }
+    const counts = countDelimiters(line)
+    paren += counts.paren
+    bracket += counts.bracket
+    brace += counts.brace
+    if (paren === 0 && bracket === 0 && brace === 0) break
+  }
+  if (exprStart < 0) return null
+  const expression = lines.slice(exprStart).join('\n').trim().replace(/;+\s*$/, '')
+  if (!expression) return null
+  if (/^(const|let|var|function|class|if|for|while|switch|try|catch|return|import|export|throw|break|continue|debugger|new\s+Promise)\b/.test(expression)) return null
+  if (/^[}\])]\s*$/.test(expression)) return null
+  const prefix = lines.slice(0, exprStart).join('\n').replace(/\s+$/, '')
+  return { prefix, expression }
+}
+
 async function runUserCode(code: string, meta: Record<string, unknown>): Promise<{ value?: unknown; text: string }> {
   const root = pluginRoot()
   const clientUrl = pathToFileURL(join(root, 'scripts', 'browser-client.mjs')).href
@@ -141,16 +225,27 @@ async function runUserCode(code: string, meta: Record<string, unknown>): Promise
     __dshResult: undefined,
   }
 
-  const bridge = buildBridgeGlobals()
+  const bridge = buildBridgeGlobals(meta)
   sandbox[BRIDGE_SYMBOL as unknown as string] = bridge[BRIDGE_SYMBOL]
   setupBrowserRuntime({ globals: sandbox })
 
   const context = vm.createContext(sandbox)
-  const script = new vm.Script(`(async () => { ${code}\n })()`, { filename: 'dsh-node-repl.js' })
+  const split = splitFinalExpression(code)
+  let script: vm.Script
+  if (split) {
+    const candidateSource = `(async () => {\n${split.prefix}\nreturn (${split.expression});\n})()`
+    try {
+      script = new vm.Script(candidateSource, { filename: 'dsh-node-repl.js' })
+    } catch {
+      script = new vm.Script(`(async () => {\n${code}\n})()`, { filename: 'dsh-node-repl.js' })
+    }
+  } else {
+    script = new vm.Script(`(async () => {\n${code}\n})()`, { filename: 'dsh-node-repl.js' })
+  }
   const promise = script.runInContext(context) as Promise<unknown>
-  await promise
+  const autoValue = await promise
 
-  const value = result !== undefined ? result : sandbox.__dshResult
+  const value = result !== undefined ? result : sandbox.__dshResult !== undefined ? sandbox.__dshResult : autoValue
   const text = value === undefined ? '' : typeof value === 'string' ? value : JSON.stringify(value, null, 2)
   return { value, text }
 }
@@ -202,7 +297,7 @@ async function main(): Promise<void> {
   const server = new McpServer({ name: 'node_repl', version: '0.1.0' })
   server.tool(
     'js',
-    'Browser Use only. Run JavaScript in a fresh Node-backed kernel to drive agent.browsers. Top-level await is supported inside the async wrapper; end with nodeRepl.write(value) or assign globalThis.__dshResult to return a value.',
+    'Browser Use only. Run JavaScript in a fresh Node-backed kernel to drive agent.browsers. Top-level await is supported inside the async wrapper; the last expression is returned automatically (or use nodeRepl.write(value) / globalThis.__dshResult = value to return explicitly).',
     jsInputSchema,
     async (args) => {
       try {

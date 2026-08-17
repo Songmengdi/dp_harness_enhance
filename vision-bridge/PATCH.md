@@ -13,6 +13,29 @@
   - `node scripts/clean-home-e2e.mjs`（干净 DSH_HOME 全生命周期）
   - `node scripts/render-verify.mjs`（闭合示例，无 key）
 
+## 已知坑：skill 注册必须用 `ctx.get('skills')`
+
+dsh 的 `AgentLoop` 只 inject `agents/sessions/llm/tools/systemPrompt`，**没有 inject `skills`**。
+在独立插件 fiber 下直接 `agent.ctx.skills.register(...)` 会抛
+`cannot get property "skills" without inject`；vision-bridge 早期版本因此把异常吞掉，
+导致 `vision-bridge` skill 从未出现在模型可见的 `<available_skills>`。
+
+正确写法（`src/exposure.ts` 的 `ensureSkill()`）：
+
+```ts
+const skills = agent.ctx.get('skills')
+state.skillDisposer = skills.register({
+  name: 'vision-bridge',
+  description: '...',
+  content: '...',
+  source: 'bundled',
+})
+```
+
+同时注意最小暴露时序：初始阶段不预注册 skill，首次 read/bash/粘贴/`vision_activate`
+触发 `activate()` 时再 `ensureSkill()` 注入。会话恢复（已有 `vision_*` 调用证据）也会走
+`activate()` 补注册。
+
 ## 运行时布局
 
 - managed venv：`$DSH_HOME/storages/dsh-vision-bridge/venv`（或配置 `venvDir`）。

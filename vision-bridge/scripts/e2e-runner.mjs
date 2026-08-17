@@ -19,7 +19,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 export const name = 'vision-bridge-e2e-runner'
-export const inject = ['cmdlineArgs', 'agents', 'tools', 'attachments']
+export const inject = ['cmdlineArgs', 'agents', 'tools', 'attachments', 'skills']
 
 const PORT = Number(process.env.VB_E2E_PORT ?? 41877)
 const GUIDE_WAIT_MS = 120_000
@@ -108,6 +108,12 @@ async function run(ctx) {
     step('引导工具注册（未激活只有引导工具）', guideReady, guideReady ? '' : `${GUIDE_WAIT_MS}ms 内未就绪`)
     step('未激活 Agent 无执行工具 schema', ctx.tools.get('vision_ground', agent) === undefined)
 
+    // 最小暴露：router-spec/router-standard 初始阶段不应让 vision-bridge skill 出现在 catalog
+    const skillService = ctx.get('skills')
+    const preSnapshot = await skillService.snapshot({ cwd: ws, scope: agent, signal: new AbortController().signal })
+    const preSkillNames = preSnapshot.skills.map((s) => s.name)
+    step('初始 catalog 不含 vision-bridge skill（最小暴露）', !preSkillNames.includes('vision-bridge'), preSkillNames.join(','))
+
     // 粘贴截图：真实 attachments 保存 → 真实 agent/pre-step 瀑布
     const ref = await ctx.attachments.saveImage({ data: TINY_PNG, mediaType: 'image/png', name: 'paste.png' })
     const pasteMessage = {
@@ -135,6 +141,17 @@ async function run(ctx) {
     await new Promise((r) => setTimeout(r, 50))
     step('粘贴后工具自动激活（vision_ground 可见）', ctx.tools.get('vision_ground', agent) !== undefined)
     step('激活后引导工具对当前 Agent 隐藏', ctx.tools.get('vision_activate', agent) === undefined)
+
+    // skill 可见/可加载：激活路径必须把 vision-bridge skill 注册进当前 agent 的 catalog
+    const skillSnapshot = await skillService.snapshot({ cwd: ws, scope: agent, signal: new AbortController().signal })
+    const skillNames = skillSnapshot.skills.map((s) => s.name)
+    step('激活后 vision-bridge skill 进入 agent catalog', skillNames.includes('vision-bridge'), skillNames.join(','))
+    const loadedSkill = await skillService.get('vision-bridge', { scope: agent, signal: new AbortController().signal })
+    step(
+      'skill 可加载且内容含激活 marker',
+      loadedSkill?.content?.includes('VISION_BRIDGE_ROUTE_C_SKILL_MARKER') === true,
+      loadedSkill?.name ?? 'skill not found',
+    )
 
     // 真实工具管线：ground → crop → pixel_diff（假上游）
     const groundResult = await ctx.tools.execute({

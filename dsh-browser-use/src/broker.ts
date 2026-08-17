@@ -3,11 +3,11 @@ import { existsSync, mkdirSync, unlinkSync } from 'node:fs'
 import { createServer, type Socket } from 'node:net'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import type { BrowserManager } from './browser.js'
+import type { BrowserManagerRegistry } from './browser-registry.js'
 import type { BrowserUseConfig } from './config.js'
 import type { ExtensionBackend } from './extension/backend.js'
 import { executeBrowserCommand } from './executor.js'
-import type { BrowserBrokerRequest, BrowserBrokerResponse } from './protocol.js'
+import { errResult, okResult, type BrowserBrokerRequest, type BrowserBrokerResponse } from './protocol.js'
 
 const BROWSER_ID = 'dsh-iab'
 const BROWSER_GENERATION = 1
@@ -32,7 +32,7 @@ function iabDescriptor() {
   }
 }
 
-function allDescriptors(extension?: ExtensionBackend) {
+function allDescriptors(extension: ExtensionBackend | undefined, sessionId: string) {
   const descriptors: Array<{
     id: string
     generation: number
@@ -42,7 +42,9 @@ function allDescriptors(extension?: ExtensionBackend) {
     apiSupportOverrides?: Record<string, boolean>
     metadata?: Record<string, string>
   }> = [iabDescriptor()]
-  if (extension?.connected) descriptors.push(extension.descriptor())
+  if (extension?.connected && (!extension.owner || extension.owner === sessionId)) {
+    descriptors.push(extension.descriptor())
+  }
   return descriptors
 }
 
@@ -57,7 +59,7 @@ export interface BrowserBroker {
 }
 
 export async function startBroker(
-  manager: BrowserManager,
+  registry: BrowserManagerRegistry,
   config: BrowserUseConfig,
   extension?: ExtensionBackend,
 ): Promise<BrowserBroker> {
@@ -77,7 +79,7 @@ export async function startBroker(
       const raw = buffer.slice(0, newline)
       buffer = buffer.slice(newline + 1)
       if (!raw.trim()) return
-      void handleRequest(socket, raw, token, manager, config, extension)
+      void handleRequest(socket, raw, token, registry, config, extension)
     })
     socket.on('error', () => {})
   })
@@ -104,7 +106,7 @@ async function handleRequest(
   socket: Socket,
   raw: string,
   token: string,
-  manager: BrowserManager,
+  registry: BrowserManagerRegistry,
   config: BrowserUseConfig,
   extension?: ExtensionBackend,
 ): Promise<void> {
@@ -123,11 +125,29 @@ async function handleRequest(
   }
   try {
     if (parsed.op === 'list') {
-      sendJson(socket, { id, ok: true, browsers: allDescriptors(extension) })
+      sendJson(socket, { id, ok: true, browsers: allDescriptors(extension, parsed.sessionId || 'default') })
       return
     }
     if (parsed.op === 'execute') {
+      const sessionId = parsed.sessionId || 'default'
+
+      // 会话结束：释放该会话的浏览器实例和扩展占用。
+      if (parsed.command.method === 'closeSession') {
+        await registry.dispose(sessionId)
+        extension?.release(sessionId)
+        sendJson(socket, { id, ok: true, result: okResult({}, 0) })
+        return
+      }
+
       if (extension?.connected && parsed.browserId === extension.id && parsed.browserGeneration === extension.generation) {
+        if (!extension.claim(sessionId)) {
+          sendJson(socket, {
+            id,
+            ok: true,
+            result: errResult('backend_busy', `User Chrome extension is busy with another Agent session: ${extension.owner}`, 0),
+          })
+          return
+        }
         const result = await extension.execute(parsed.command)
         sendJson(socket, { id, ok: true, result })
         return
@@ -136,6 +156,7 @@ async function handleRequest(
         sendJson(socket, { id, ok: false, error: 'browser backend is stale or unavailable' })
         return
       }
+      const manager = registry.get(sessionId)
       const result = await executeBrowserCommand(manager, config, parsed.command)
       sendJson(socket, { id, ok: true, result })
       return

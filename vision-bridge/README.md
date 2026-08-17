@@ -9,6 +9,9 @@
 
 - **seamless 桥**：粘贴截图自动落地工作区并注入路径与意图；read 读图被拦截时只给两行指路；
   bash 出图自动提示。三种触发都会按会话自动激活全部工具。
+- **Skill 最小暴露**：`vision-bridge` skill 初始不进入 `<available_skills>`；首次遇到图
+  （read/bash/粘贴/`vision_activate`）后，随工具一起注入当前 Agent 的 skill catalog。
+  插件内必须用 `agent.ctx.get('skills').register(...)`，不能直接 `agent.ctx.skills`（AgentLoop 未 inject `skills`）。
 - **13 个工具**（引导 `vision_activate` + 12 个执行工具）：
   - 远程（需配置视觉端点）：`vision_glance`（描述/问答/OCR/多图）· `vision_ground`（定位）
     · `vision_detect`（盘点，逐字文字）· `vision_long_screenshot_ocr`（长截图分块 OCR）。

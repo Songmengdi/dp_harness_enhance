@@ -122,6 +122,8 @@ export type BrowserCommand =
   | { method: 'drag'; tabId?: string; fromRef?: string; toRef?: string; from?: { x: number; y: number }; to?: { x: number; y: number } }
   | { method: 'browserViewportSet'; tabId?: string; width: number; height: number }
   | { method: 'browserViewportReset'; tabId?: string }
+  | { method: 'dialog'; tabId?: string; accept: boolean; promptText?: string }
+  | { method: 'clearAgentTabs' }
   | { method: 'playwright'; tabId?: string; action: PlaywrightAction }
   | { method: 'playwrightWaitForTimeout'; tabId?: string; timeoutMs: number }
   | { method: 'nameSession'; name: string }

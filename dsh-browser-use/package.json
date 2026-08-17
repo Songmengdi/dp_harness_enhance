@@ -1,7 +1,7 @@
 {
   "name": "dsh-browser-use",
   "version": "0.1.0",
-  "description": "ZCode-style browser automation for dsh: host Playwright tools + persistent browser profile + client conversation-view live browser panel + drive/walkthrough skills.",
+  "description": "ZCode-style browser automation for dsh: host Playwright tools + persistent browser profile + drive/walkthrough skills.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -9,10 +9,6 @@
     ".": {
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
-    },
-    "./client": {
-      "types": "./lib/types/client/index.d.ts",
-      "default": "./lib/client.js"
     },
     "./mcp": {
       "default": "./lib/mcp/server.js"
@@ -22,8 +18,6 @@
   },
   "files": [
     "lib/index.js",
-    "lib/client.js",
-    "lib/client.js.map",
     "lib/mcp/server.js",
     "lib/types/**/*.d.ts",
     "scripts/browser-client.mjs",
@@ -42,24 +36,12 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
-    },
-    "client": {
-      "platform": "web",
-      "inject": [
-        "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-slots"
-      ]
     }
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
-    "react": "^18.2.0"
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
@@ -70,29 +52,22 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.6",
     "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.6",
     "@deepseek-ai/dsh-skill": "0.1.0-rc.6",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
     "@types/node": "^22.0.0",
-    "@types/react": "~18.3.1",
-    "@types/react-dom": "~18.3.1",
     "@types/ws": "^8.18.1",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
     "tsdown": "^0.22.2",
     "typescript": "^5.9.0"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "build": "tsc -p tsconfig.host.json && tsc -p tsconfig.client.json && tsdown",
+    "typecheck": "tsc -p tsconfig.host.json --noEmit",
+    "build": "tsc -p tsconfig.host.json && tsdown",
     "prepare": "npm run build",
     "pack": "pnpm pack",
     "test": "node --test test/*.test.js",
     "verify": "npm run typecheck && npm run build && npm run test",
-    "sync:profile": "cp lib/client.js lib/client.js.map lib/index.js lib/mcp/server.js \"$HOME/.dsh/profiles/web/node_modules/dsh-browser-use/lib/\" && mkdir -p \"$HOME/.dsh/profiles/web/node_modules/dsh-browser-use/scripts\" && cp scripts/browser-client.mjs \"$HOME/.dsh/profiles/web/node_modules/dsh-browser-use/scripts/\"",
+    "sync:profile": "cp lib/index.js lib/mcp/server.js \"$HOME/.dsh/profiles/web/node_modules/dsh-browser-use/lib/\" && mkdir -p \"$HOME/.dsh/profiles/web/node_modules/dsh-browser-use/scripts\" && cp scripts/browser-client.mjs \"$HOME/.dsh/profiles/web/node_modules/dsh-browser-use/scripts/\"",
     "dev": "npm run build && npm run sync:profile"
   }
 }

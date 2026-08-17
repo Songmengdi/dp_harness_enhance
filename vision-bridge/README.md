@@ -37,8 +37,9 @@ dsh --profile <profile> --dump-config   # 末尾应出现 dsh-vision-bridge 层
 ```yaml
 - id: dsh-vision-bridge
   config:
-    endpoint: https://<视觉端点>/v1          # OpenAI-compatible
+    endpoint: https://<视觉端点>              # OpenAI 兼容或 Anthropic 端点前缀
     model: <视觉模型 id>
+    protocol: openai-completions             # 或 anthropic-messages（如火山方舟 /api/plan）
     credential: <DSH Credential 引用名>      # 只存引用；每次现取现用、只进子进程环境
     language: 中文
 ```

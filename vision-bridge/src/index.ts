@@ -48,6 +48,9 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
   if (config.credential && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(config.credential)) {
     throw new Error(`credential 必须是合法的 DSH Credential 引用名（POSIX 标识符，收到 ${JSON.stringify(config.credential)}）`)
   }
+  if (!['openai-completions', 'anthropic-messages'].includes(config.protocol)) {
+    throw new Error(`protocol 必须是 openai-completions 或 anthropic-messages（收到 ${JSON.stringify(config.protocol)}）`)
+  }
 
   const logger = createLogger(ctx)
   // lib/ 在包根下：import.meta.url 是 lib/index.js，往上一级才是包根
@@ -82,6 +85,7 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
   const remote = new RemoteVision(ctx, runtime, {
     endpoint: config.endpoint,
     model: config.model,
+    protocol: config.protocol,
     credential: config.credential,
     language: config.language,
     visionTimeoutMs: config.visionTimeoutMs,
@@ -187,6 +191,7 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
       remote.updateConfig({
         endpoint: next.endpoint,
         model: next.model,
+        protocol: next.protocol,
         credential: next.credential,
         language: next.language,
         visionTimeoutMs: next.visionTimeoutMs,

@@ -90,8 +90,10 @@ def chat_completion(spec, system, user_text, image_paths):
     headers = {'Content-Type': 'application/json'}
     if api_key:
         headers['Authorization'] = 'Bearer ' + api_key
-    url = endpoint + '/chat/completions'
+    if (spec.get('protocol') or 'openai-completions') == 'anthropic-messages':
+        return _chat_completion_anthropic(spec, system, user_text, image_paths, endpoint, max_retries, timeout_s, api_key)
 
+    url = endpoint + '/chat/completions'
     last_error = '上游请求失败'
     for attempt in range(max_retries + 1):
         try:
@@ -127,6 +129,66 @@ def chat_completion(spec, system, user_text, image_paths):
     if not isinstance(text, str) or not text.strip():
         contract.fail('output', '上游返回空回答（非结构化回答视为 output 错误）')
     return {'text': text, 'finishReason': finish}
+
+
+def _chat_completion_anthropic(spec, system, user_text, image_paths, base_url, max_retries, timeout_s, api_key):
+    """Anthropic Messages 协议（火山方舟 /api/plan）：x-api-key + anthropic-version。"""
+    import re as _re
+    content = [{'type': 'text', 'text': user_text}]
+    for p in image_paths:
+        head, b64 = data_url(p).split(',', 1)
+        content.append({'type': 'image', 'source': {'type': 'base64', 'media_type': head[5:], 'data': b64}})
+    payload = {
+        'model': spec.get('model') or '',
+        'max_tokens': int(spec.get('maxTokens', 1600)),
+        'temperature': 0.2,
+        'system': system,
+        'messages': [{'role': 'user', 'content': content}],
+    }
+    headers = {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+    }
+    if api_key:
+        headers['x-api-key'] = api_key
+    url = base_url.rstrip('/') + '/v1/messages'
+    last_error = '上游请求失败'
+    for attempt in range(max_retries + 1):
+        try:
+            resp = _http_post_json(url, payload, headers, timeout_s)
+        except urllib.error.HTTPError as exc:
+            body = ''
+            try:
+                body = exc.read().decode('utf-8', 'replace')
+            except Exception:
+                pass
+            if exc.code in (429,) or exc.code >= 500:
+                last_error = 'HTTP %s: %s' % (exc.code, body[:300])
+                if attempt < max_retries:
+                    time.sleep(0.5 * (2 ** attempt))
+                    continue
+            contract.fail('upstream', 'HTTP %s: %s' % (exc.code, body[:300]))
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last_error = '网络错误: %s' % exc
+            if attempt < max_retries:
+                time.sleep(0.5 * (2 ** attempt))
+                continue
+            contract.fail('upstream', last_error)
+        break
+    else:
+        contract.fail('upstream', last_error)
+    try:
+        blocks = resp.get('content')
+        if not isinstance(blocks, list):
+            contract.fail('output', '上游返回结构异常（缺少 content）')
+        text = ''.join(b.get('text', '') for b in blocks if isinstance(b, dict) and b.get('type') == 'text')
+        stop_reason = resp.get('stop_reason')
+    except (KeyError, TypeError):
+        contract.fail('output', '上游返回结构异常（content 无法解析）')
+    if not text.strip():
+        contract.fail('output', '上游返回空回答（非结构化回答视为 output 错误）')
+    # stop_reason=max_tokens 视为截断（与 OpenAI finish_reason=length 对齐）
+    return {'text': text, 'finishReason': 'length' if stop_reason == 'max_tokens' else 'stop'}
 
 
 def parse_boxes_json(text, max_side=1000):

@@ -22,10 +22,12 @@ export const Config = Schema.object({
   defaultTimeoutMs: Schema.number().default(120000).min(1000),
   /** runtime 准备 / 探针超时（毫秒）。 */
   prepareTimeoutMs: Schema.number().default(180000).min(5000),
-  /** 视觉 API 端点（OpenAI-compatible base URL）；空 = 远程工具未配置。 */
+  /** 视觉 API 端点（OpenAI-compatible base URL 或 Anthropic 端点前缀）；空 = 远程工具未配置。 */
   endpoint: Schema.string().default(''),
   /** 视觉模型 id。 */
   model: Schema.string().default(''),
+  /** 协议：openai-completions（/chat/completions + Bearer）| anthropic-messages（/v1/messages + x-api-key）。 */
+  protocol: Schema.string().default('openai-completions'),
   /** DSH Credential 引用名（只存引用，凭据每次现取现用、只进子进程环境）。 */
   credential: Schema.string().default(''),
   /** 视觉回答语言（进 prompt 与 glance 缓存键）。 */
@@ -53,6 +55,7 @@ export interface VisionBridgeConfig {
   prepareTimeoutMs: number
   endpoint: string
   model: string
+  protocol: string
   credential: string
   language: string
   visionTimeoutMs: number

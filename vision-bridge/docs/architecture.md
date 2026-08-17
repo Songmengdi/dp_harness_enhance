@@ -52,6 +52,7 @@ Python runtime      python -m dsh_vision <sub> --spec '<json>'（独立 venv，�
 | maxConcurrency | `2` | 视觉操作并发信号量上限 |
 | defaultTimeoutMs | `120000` | 默认整操作超时 |
 | endpoint / model | 空 | 视觉 API 端点与模型（空 = 远程工具报 config 错误） |
+| protocol | `openai-completions` | `openai-completions`（/chat/completions + Bearer）或 `anthropic-messages`（/v1/messages + x-api-key，如火山方舟 /api/plan） |
 | credential | 空 | DSH Credential 引用名（POSIX 标识符；只存引用） |
 | language | `中文` | 进视觉 prompt 与 glance 缓存键 |
 | visionTimeoutMs / maxRetries | `90000` / `2` | 远程硬超时与 429/5xx/网络退避重试上限 |

@@ -9,6 +9,7 @@ import type { BridgeLogger } from './logger.js'
 export interface RemoteConfig {
   endpoint: string
   model: string
+  protocol: string
   credential: string
   language: string
   visionTimeoutMs: number
@@ -67,13 +68,13 @@ export class RemoteVision {
       DSH_VISION_MODEL: this.config.model,
       DSH_VISION_API_KEY: apiKey ?? '',
       DSH_VISION_LANGUAGE: this.config.language,
-      DSH_VISION_PROTOCOL: 'openai-completions',
+      DSH_VISION_PROTOCOL: this.config.protocol,
     }
     const payload = {
       endpoint: this.config.endpoint,
       model: this.config.model,
       language: this.config.language,
-      protocol: 'openai-completions',
+      protocol: this.config.protocol,
       maxRetries: this.config.maxRetries,
       timeoutMs,
       ...spec,

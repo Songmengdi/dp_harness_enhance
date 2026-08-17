@@ -94,7 +94,7 @@ function makeFakeUpstream() {
   })
 }
 
-function makeEnv(up) {
+function makeEnv(up, overrides = {}) {
   const tmp = mkdtempSync(join(os.tmpdir(), 'vb-02-'))
   const ws = join(tmp, 'ws')
   makeImages(ws)
@@ -116,8 +116,9 @@ function makeEnv(up) {
     },
   }
   const remote = new RemoteVision(fakeCtx, runtime, {
-    endpoint: up.endpoint,
+    endpoint: overrides.endpoint ?? up.endpoint,
     model: 'fake-vision',
+    protocol: overrides.protocol ?? 'openai-completions',
     credential: 'TEST_VISION_KEY',
     language: '中文',
     visionTimeoutMs: 10_000,
@@ -362,6 +363,52 @@ test('headless 全链路: ground → crop → pixel_diff（假上游，无真实
       execFor(env.ws),
     )
     assert.equal(diff.ratioPct, 0, '同图比较差异必须为 0')
+  } finally {
+    up.server.close()
+    rmSync(env.tmp, { recursive: true, force: true })
+  }
+})
+
+// ── Anthropic Messages 协议变体（火山方舟 /api/plan：x-api-key + /v1/messages） ──
+
+function makeAnthropicUpstream() {
+  const counters = { calls: 0, auth: '', version: '' }
+  const server = http.createServer((req, res) => {
+    let body = ''
+    req.on('data', (c) => { body += c })
+    req.on('end', () => {
+      counters.calls += 1
+      counters.auth = String(req.headers['x-api-key'] ?? '')
+      counters.version = String(req.headers['anthropic-version'] ?? '')
+      let user = ''
+      try { user = JSON.stringify(JSON.parse(body).messages?.[0]?.content ?? '') } catch (e) { /* ignore */ }
+      const reply = (obj, status = 200) => {
+        res.writeHead(status, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(obj))
+      }
+      if (user.includes('TRUNC')) {
+        return reply({ content: [{ type: 'text', text: '截断回答' }], stop_reason: 'max_tokens' })
+      }
+      return reply({ content: [{ type: 'text', text: 'anthropic 回答' }], stop_reason: 'end_turn' })
+    })
+  })
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => resolve({ server, counters, endpoint: `http://127.0.0.1:${server.address().port}/api/plan` }))
+  })
+}
+
+test('glance anthropic 协议: x-api-key + /v1/messages + stop_reason=max_tokens → truncated', async () => {
+  const up = await makeAnthropicUpstream()
+  const env = makeEnv(up, { endpoint: up.endpoint, protocol: 'anthropic-messages' })
+  try {
+    const out = await env.tools.glance.execute({ images: ['base.png'], query: '看看这张图' }, execFor(env.ws))
+    assert.match(out.answer, /anthropic 回答/)
+    assert.equal(out.truncated, false)
+    assert.equal(up.counters.auth, SECRET, 'x-api-key 应携带凭据')
+    assert.equal(up.counters.version, '2023-06-01')
+
+    const trunc = await env.tools.glance.execute({ images: ['base.png'], query: 'TRUNC 说点啥' }, execFor(env.ws))
+    assert.equal(trunc.truncated, true, 'stop_reason=max_tokens 应映射为截断')
   } finally {
     up.server.close()
     rmSync(env.tmp, { recursive: true, force: true })

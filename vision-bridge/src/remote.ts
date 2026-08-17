@@ -41,11 +41,7 @@ export class RemoteVision {
   }
 
   /** 供 glance 缓存键取凭据哈希；返回值绝不进日志与结果。 */
-  async resolveCredentialValue(): Promise<string | undefined> {
-    return this.resolveCredential()
-  }
-
-  private async resolveCredential(): Promise<string | undefined> {
+  async resolveCredential(): Promise<string | undefined> {
     const ref = this.config.credential.trim()
     if (!ref) return undefined
     try {
@@ -76,7 +72,6 @@ export class RemoteVision {
     const payload = {
       endpoint: this.config.endpoint,
       model: this.config.model,
-      apiKey: apiKey ?? '',
       language: this.config.language,
       protocol: 'openai-completions',
       maxRetries: this.config.maxRetries,

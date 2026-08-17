@@ -1,14 +1,8 @@
-import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { VisionError } from '../errors.js'
-import { jsonOutput, agentWorkspace, type ToolEnv } from './common.js'
-
-function stemOf(raw: unknown, fallback: string): string {
-  if (raw === undefined || raw === null || String(raw).trim() === '') return fallback
-  return String(raw).replace(/[^0-9A-Za-z._-]/g, '_').slice(0, 40)
-}
+import { jsonOutput, agentWorkspace, sanitizeStem, withStaging, type ToolEnv } from './common.js'
 
 const svgProbe = (buf: Buffer): string | null => {
   const text = buf.toString('utf8')
@@ -50,8 +44,7 @@ export function defineTraceTool(env: ToolEnv) {
     execute: async (args, exec) => {
       const fence = await env.fences.forWorkspace(agentWorkspace(exec))
       const real = await fence.resolveInput(String(args.image))
-      const staging = await fence.beginStaging()
-      try {
+      return withStaging(fence, async (staging) => {
         const raw = (await env.runtime.run(
           'trace',
           { image: real, region: args.region, color: args.color, outline: args.outline, outDir: staging },
@@ -63,17 +56,14 @@ export function defineTraceTool(env: ToolEnv) {
         const stamp = crypto.randomBytes(4).toString('hex')
         const committed = await fence.commitFiles(staging, [{
           staging: path.basename(raw.file),
-          finalName: `${stemOf(args.output, 'trace')}_${stamp}.svg`,
+          finalName: `${sanitizeStem(args.output, 'trace')}_${stamp}.svg`,
           sourceTool: 'vision_trace',
           kind: 'vector',
           description: `SVG 几何 ${path.basename(real)}（${raw.paths} 条路径）`,
           probe: svgProbe,
         }])
         return { svg: committed[0].path, paths: raw.paths, width: raw.width, height: raw.height, scale: raw.scale, artifact: committed[0] }
-      } catch (e) {
-        await fsp.rm(staging, { recursive: true, force: true }).catch(() => {})
-        throw e
-      }
+      })
     },
   })
 }

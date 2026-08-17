@@ -38,7 +38,8 @@ export function createCapabilityChecker(ctx: Context, logger: BridgeLogger): {
       } catch (e) { /* 无默认模型服务 → 保守 false */ }
     }
     if (!provider || !model || llm === undefined) return false
-    const key = `${provider}|${model}`
+    // D12：能力判断按会话/Agent 隔离（同一模型在不同会话各自判定、各自缓存）
+    const key = `${agent.id}|${provider}|${model}`
     const hit = cache.get(key)
     if (hit) {
       if (hit.ttlMs === null || Date.now() - hit.at <= hit.ttlMs) return hit.sees

@@ -25,12 +25,3 @@ export class VisionError extends Error {
 export function isVisionError(e: unknown): e is VisionError {
   return e instanceof VisionError
 }
-
-/** Python 退出码 → 稳定类别（0 为成功；取消/超时由 Host 侧信号判定）。 */
-export const EXIT_CODE_CATEGORY: Record<number, ErrorCategory> = {
-  2: 'input',
-  3: 'config',
-  4: 'upstream',
-  5: 'runtime',
-  6: 'output',
-}

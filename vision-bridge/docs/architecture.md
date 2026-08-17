@@ -22,7 +22,7 @@ Python runtime      python -m dsh_vision <sub> --spec '<json>'（独立 venv，�
 | 执行总闸门 | `src/runtime.ts` | 并发信号量（可取消排队）→ argv 向量 subprocess → 超时/取消 SIGKILL → stdout 有界 → envelope JSON → Host 侧契约校验 → 稳定错误类别 |
 | 运行时管理 | `src/runtime-manager.ts` | managed：`python3 -m venv` → pip 按 `runtime/requirements.lock` 安装 → probe 探针；失败返回可修复错误文案；05 票加候选→原子切换 |
 | 路径与产物 | `src/paths.ts` | 输入 realpath 围栏（会话工作区 + allowedDirs，符号链接逃逸拒绝）；产物：staging 目录写入 → 格式探针 → 同文件系统原子 rename 提交 |
-| 能力判定 | `src/capabilities.ts` | `llm.resolveModelInfo` 判原生图片能力；成功正缓存，失败 TTL 30s |
+| 能力判定 | `src/capabilities.ts` | `llm.resolveModelInfo` 判原生图片能力；按 Agent 隔离缓存（D12），成功正缓存，失败 TTL 30s |
 | 远程视觉 | `src/remote.ts` | D7 凭据管线：只存 DSH Credential 引用，每次现取现用、只进子进程环境；glance 会话级缓存（key = 图片内容哈希 + query/ocr/region + 端点/模型/语言/凭据哈希） |
 | Seamless 桥 | `src/seamless.ts` | 三条钩子（粘贴落地 / read 拦截 / bash 出图）+ skill 加载检测，全部按会话隔离（挂在 exposure 状态机上）；视觉模型会话整套不触发 |
 | intent | `src/intent.ts` | 粘贴取同消息非图片文本；bash 自动描述取助手最后一段（回退最新真实用户请求）；过滤注入内容；一律截尾 500 字符 |
@@ -71,7 +71,7 @@ Host 侧统一成 `VisionError(category, message)`，工具失败时模型看到
   工具定义惰性取用当前 runtime（`manager.ensureReady()` 每次拿 generation），无需重注册。
 - **卸载顺序**：`runtime.dispose()`（取消活动操作并等待收敛）→ `exposure.disposeAll()`
   （逐 Agent 回收工具与 skill）→ `manager.dispose()`；无残留注册。
-- **指标**：`vision-metric` 结构化日志（工具名、总耗时、上游耗时、图片数量/字节、模型、
+- **指标**：`vision-metric` 结构化日志（工具名、总耗时、上游耗时、图片数量/字节/像素、模型、
   缓存命中、错误类别）；不含密钥、base64 与无界上游正文。
 - **门禁**：`npm run verify` = 测试门禁（零测试即失败）→ typecheck → build →
   Python 全量语法检查（compileall）→ 全量 node --test → npm pack dry-run。

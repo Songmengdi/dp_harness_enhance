@@ -1,14 +1,8 @@
-import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { VisionError } from '../errors.js'
-import { jsonOutput, agentWorkspace, type ToolEnv } from './common.js'
-
-function stemOf(raw: unknown, fallback: string): string {
-  if (raw === undefined || raw === null || String(raw).trim() === '') return fallback
-  return String(raw).replace(/[^0-9A-Za-z._-]/g, '_').slice(0, 40)
-}
+import { jsonOutput, agentWorkspace, sanitizeStem, withStaging, type ToolEnv } from './common.js'
 
 /** PNG 必须带 alpha（IHDR color type 6 = RGBA）。 */
 const alphaPngProbe = (buf: Buffer): string | null => {
@@ -46,8 +40,7 @@ export function defineExtractForegroundTool(env: ToolEnv) {
     execute: async (args, exec) => {
       const fence = await env.fences.forWorkspace(agentWorkspace(exec))
       const real = await fence.resolveInput(String(args.image))
-      const staging = await fence.beginStaging()
-      try {
+      return withStaging(fence, async (staging) => {
         const raw = (await env.runtime.run(
           'extract_foreground',
           { image: real, region: args.region, mode: args.mode, excludeColor: args.excludeColor, outDir: staging },
@@ -59,7 +52,7 @@ export function defineExtractForegroundTool(env: ToolEnv) {
         const stamp = crypto.randomBytes(4).toString('hex')
         const committed = await fence.commitFiles(staging, [{
           staging: path.basename(raw.file),
-          finalName: `${stemOf(args.output, 'foreground')}_${stamp}.png`,
+          finalName: `${sanitizeStem(args.output, 'foreground')}_${stamp}.png`,
           sourceTool: 'vision_extract_foreground',
           kind: 'image',
           description: `前景提取 ${path.basename(real)}（覆盖率 ${raw.coveragePct}%）`,
@@ -73,10 +66,7 @@ export function defineExtractForegroundTool(env: ToolEnv) {
           height: raw.height,
           artifact: committed[0],
         }
-      } catch (e) {
-        await fsp.rm(staging, { recursive: true, force: true }).catch(() => {})
-        throw e
-      }
+      })
     },
   })
 }

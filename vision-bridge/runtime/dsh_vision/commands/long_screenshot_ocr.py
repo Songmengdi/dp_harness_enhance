@@ -160,22 +160,39 @@ def run(spec):
             'ocr': False,
         }
 
-    # OCR：逐块（resume 时已有侧车文件的块跳过远程）
+    # OCR：逐块（resume 时已有侧车文件的块跳过远程）；jobs>1 时线程池并发
+    jobs = spec.get('jobs') or 1
     texts = []
+    todo = []
     for i, cp in enumerate(chunk_paths):
         ocr_file = os.path.join(run_dir, 'ocr_%03d.txt' % (i + 1))
         if resume and os.path.isfile(ocr_file):
             with open(ocr_file, encoding='utf-8') as f:
                 texts.append(f.read())
             continue
+        todo.append((i, cp, ocr_file))
+
+    def ocr_one(item):
+        i, cp, ocr_file = item
         system = prompts.SYSTEM_OCR + ('\n这是聊天截图，按消息顺序转写。' if mode == 'chat' else '')
         hint = prompts.focus_hint(spec.get('hint'))
         user = '请转写这张长截图分块中的全部文字。' + ('\n' + hint if hint else '')
         resp = chat_completion(spec, system, user, [cp])
         text = resp['text']
-        texts.append(text)
         with open(ocr_file, 'w', encoding='utf-8') as f:
             f.write(text)
+        return i, text
+
+    if len(todo) == 1 or jobs <= 1:
+        results = [ocr_one(item) for item in todo]
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(jobs, len(todo))) as pool:
+            results = list(pool.map(ocr_one, todo))
+    for i, text in sorted(results, key=lambda pair: pair[0]):
+        while len(texts) <= i:
+            texts.append('')
+        texts[i] = text
 
     audit_lines = ['# vision_long_screenshot_ocr 边界审计', '', 'run: %s' % run_name, 'chunks: %d' % len(chunk_paths), '']
     merged_text = merge_chunks(texts, boundaries=[], audit_lines=audit_lines)

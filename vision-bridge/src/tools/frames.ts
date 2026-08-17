@@ -1,8 +1,7 @@
-import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { VisionError } from '../errors.js'
-import { jsonOutput, agentWorkspace, type ToolEnv } from './common.js'
+import { jsonOutput, agentWorkspace, sanitizeStem, withStaging, type ToolEnv } from './common.js'
 
 const MAX_TIMES = 8
 
@@ -13,11 +12,6 @@ export function pngProbe(buf: Buffer): string | null {
     return '不是合法 PNG'
   }
   return null
-}
-
-function safeName(text: string): string {
-  const cleaned = String(text).replace(/[^0-9A-Za-z._-]/g, '_')
-  return cleaned || 't'
 }
 
 interface FramesResult {
@@ -59,8 +53,7 @@ export function defineFramesTool(env: ToolEnv) {
       }
       const fence = await env.fences.forWorkspace(agentWorkspace(exec))
       const real = await fence.resolveInput(String(args.path))
-      const staging = await fence.beginStaging()
-      try {
+      return withStaging(fence, async (staging) => {
         const raw = (await env.runtime.run(
           'frames',
           { path: real, times, outDir: staging },
@@ -80,7 +73,7 @@ export function defineFramesTool(env: ToolEnv) {
           staging,
           raw.frames.map((frame, i) => ({
             staging: path.basename(String(frame.path)),
-            finalName: `frames_${stamp}_${String(i + 1).padStart(2, '0')}_${safeName(frame.time)}.png`,
+            finalName: `frames_${stamp}_${String(i + 1).padStart(2, '0')}_${sanitizeStem(frame.time, 't')}.png`,
             sourceTool: 'vision_frames',
             kind: 'frame',
             description: `t=${frame.time}`,
@@ -92,10 +85,7 @@ export function defineFramesTool(env: ToolEnv) {
         }
         const frames = raw.frames.map((frame, i) => ({ time: frame.time, path: committed[i].path }))
         return { dir: fence.artifactsDir, frames }
-      } catch (e) {
-        await fsp.rm(staging, { recursive: true, force: true }).catch(() => {})
-        throw e
-      }
+      })
     },
   })
 }

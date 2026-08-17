@@ -6,6 +6,7 @@
 """
 import base64
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -59,7 +60,8 @@ def chat_completion(spec, system, user_text, image_paths):
     model = (spec.get('model') or '').strip()
     if not endpoint or not model:
         contract.fail('config', '未配置视觉端点/模型（endpoint 与 model 均为空）')
-    api_key = spec.get('apiKey') or ''
+    # D7：凭据只从环境变量读取（Host 现取现用注入），绝不进 argv/绝不落盘
+    api_key = os.environ.get('DSH_VISION_API_KEY', '')
     timeout_s = max(1, int(spec.get('timeoutMs', 90000)) / 1000.0)
     max_retries = int(spec.get('maxRetries', 2))
 

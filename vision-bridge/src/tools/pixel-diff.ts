@@ -1,9 +1,8 @@
-import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { VisionError } from '../errors.js'
-import { jsonOutput, agentWorkspace, type ToolEnv } from './common.js'
+import { jsonOutput, agentWorkspace, sanitizeStem, withStaging, type ToolEnv } from './common.js'
 import { pngProbe } from './frames.js'
 
 interface PixelDiffResult {
@@ -35,8 +34,7 @@ export function definePixelDiffTool(env: ToolEnv) {
       const fence = await env.fences.forWorkspace(agentWorkspace(exec))
       const original = await fence.resolveInput(String(args.original))
       const rebuilt = await fence.resolveInput(String(args.rebuilt))
-      const staging = await fence.beginStaging()
-      try {
+      return withStaging(fence, async (staging) => {
         const raw = (await env.runtime.run(
           'pixel_diff',
           { original, rebuilt, runName: args.runName, outDir: staging },
@@ -46,7 +44,7 @@ export function definePixelDiffTool(env: ToolEnv) {
           throw new VisionError('output', 'pixel_diff 结果契约违反')
         }
         const stamp = crypto.randomBytes(4).toString('hex')
-        const runTag = args.runName ? String(args.runName).replace(/[^0-9A-Za-z._-]/g, '_').slice(0, 24) : 'diff'
+        const runTag = sanitizeStem(args.runName, 'diff').slice(0, 24)
         const committed = await fence.commitFiles(staging, [
           {
             staging: path.basename(raw.files.heatmap),
@@ -66,10 +64,7 @@ export function definePixelDiffTool(env: ToolEnv) {
           },
         ])
         return { ratioPct: raw.ratioPct, worstRegions: raw.worstRegions, heatmap: committed[0], report: committed[1] }
-      } catch (e) {
-        await fsp.rm(staging, { recursive: true, force: true }).catch(() => {})
-        throw e
-      }
+      })
     },
   })
 }

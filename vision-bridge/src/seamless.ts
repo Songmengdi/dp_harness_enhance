@@ -12,6 +12,7 @@ import type { SeesImagesFn } from './capabilities.js'
 import type { FenceRegistry } from './paths.js'
 import type { RemoteVision } from './remote.js'
 import type { BridgeLogger } from './logger.js'
+import { workspaceOfAgent } from './tools/common.js'
 import { intentFromPaste, intentFromRecent } from './intent.js'
 
 const EXT_BY_MEDIA: Record<string, string> = {
@@ -43,9 +44,7 @@ interface PreStepPayload {
   signal: AbortSignal
 }
 
-function workspaceOf(agent: Agent): string | undefined {
-  return (agent.session as unknown as { header?: { cwd?: string } })?.header?.cwd
-}
+const workspaceOf = workspaceOfAgent
 
 export class Seamless {
   constructor(

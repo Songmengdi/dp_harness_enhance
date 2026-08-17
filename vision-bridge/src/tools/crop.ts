@@ -3,13 +3,8 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { VisionError } from '../errors.js'
-import { jsonOutput, agentWorkspace, type ToolEnv } from './common.js'
+import { jsonOutput, agentWorkspace, sanitizeStem, withStaging, type ToolEnv } from './common.js'
 import { pngProbe } from './frames.js'
-
-function stemOf(raw: unknown): string {
-  if (raw === undefined || raw === null || String(raw).trim() === '') return 'crop'
-  return String(raw).replace(/[^0-9A-Za-z._-]/g, '_').slice(0, 40)
-}
 
 interface CropResult {
   box: { x1: number; y1: number; x2: number; y2: number }
@@ -40,9 +35,8 @@ export function defineCropTool(env: ToolEnv) {
       if (args.scale !== undefined && (!Number.isInteger(args.scale) || args.scale < 1 || args.scale > 8)) {
         throw new VisionError('input', 'scale 必须是 1-8 的整数')
       }
-      const staging = await fence.beginStaging()
-      const outName = stemOf(args.output) + '.png'
-      try {
+      return withStaging(fence, async (staging) => {
+        const outName = sanitizeStem(args.output, 'crop') + '.png'
         const raw = (await env.runtime.run(
           'crop',
           { image: real, region: args.region, scale: args.scale, outDir: staging, outName },
@@ -52,7 +46,7 @@ export function defineCropTool(env: ToolEnv) {
           throw new VisionError('output', 'crop 结果契约违反')
         }
         const stamp = crypto.randomBytes(4).toString('hex')
-        const finalName = `${stemOf(args.output)}_${stamp}.png`
+        const finalName = `${sanitizeStem(args.output, 'crop')}_${stamp}.png`
         const committed = await fence.commitFiles(staging, [{
           staging: path.basename(raw.file),
           finalName,
@@ -66,10 +60,7 @@ export function defineCropTool(env: ToolEnv) {
           throw new VisionError('output', '裁剪产物路径与输入图相同（禁止覆盖输入图）')
         }
         return { box: raw.box, width: raw.width, height: raw.height, format: raw.format, artifact }
-      } catch (e) {
-        await fsp.rm(staging, { recursive: true, force: true }).catch(() => {})
-        throw e
-      }
+      })
     },
   })
 }

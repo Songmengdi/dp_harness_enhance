@@ -58,7 +58,7 @@ export function defineGlanceTool(env: RemoteToolEnv) {
       const fence = await env.fences.forWorkspace(agentWorkspace(exec))
       const reals: string[] = []
       for (const p of images) reals.push(await fence.resolveInput(p))
-      const apiKey = await env.remote.resolveCredentialValue()
+      const apiKey = await env.remote.resolveCredential()
       const key = await env.cache.keyFor({
         images: reals,
         query: args.query,

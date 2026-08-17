@@ -125,6 +125,20 @@ test('exposure: 会话恢复凭持久事件里的激活证据重新 attach', asy
   assert.deepEqual(disposals, [])
 })
 
+test('exposure: runtime 未就绪时 activate 不发布任何执行工具', async () => {
+  let ready = false
+  const { exposure } = makeExposure({ runtimeReady: () => ready })
+  const { agent, registered } = makeAgent('s7')
+  const result = exposure.activate(agent, 'paste')
+  assert.equal(result.activated, false)
+  assert.deepEqual(result.tools, [])
+  assert.deepEqual(registered, [], 'runtime 未就绪不得注册执行工具')
+  ready = true
+  const later = exposure.activate(agent, 'paste')
+  assert.equal(later.activated, true)
+  assert.deepEqual(later.tools, ['vision_media', 'vision_frames'])
+})
+
 test('exposure: Agent 结束/卸载回收全部注册（含 skill）', async () => {
   const { exposure } = makeExposure()
   const { agent, disposals } = makeAgent('s6')

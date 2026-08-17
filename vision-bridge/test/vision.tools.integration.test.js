@@ -248,13 +248,12 @@ test('glance: Host 兜底超时杀进程 → timeout 类别', async () => {
       query: 'HANG',
       endpoint: up.endpoint,
       model: 'fake-vision',
-      apiKey: SECRET,
       language: '中文',
       protocol: 'openai-completions',
       maxRetries: 0,
       timeoutMs: 60_000,
     }
-    const err = await env.runtime.run('glance', spec, { timeoutMs: 300 }).catch((e) => e)
+    const err = await env.runtime.run('glance', spec, { timeoutMs: 300, env: { DSH_VISION_API_KEY: SECRET } }).catch((e) => e)
     assert.ok(err instanceof VisionError && err.category === 'timeout', `实际: ${err}`)
   } finally {
     up.server.close()

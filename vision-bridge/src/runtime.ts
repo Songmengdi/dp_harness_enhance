@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { statSync } from 'node:fs'
+import { statSync, openSync, readSync, closeSync } from 'node:fs'
 import { VisionError } from './errors.js'
 import type { BridgeLogger } from './logger.js'
 import type { RuntimeManager } from './runtime-manager.js'
@@ -26,6 +26,23 @@ export interface SpawnResult {
 
 const DEFAULT_MAX_STDOUT = 1 << 20 // 1 MiB
 const DEFAULT_MAX_STDERR = 256 * 1024
+
+/** PNG 像素数（IHDR 宽高），非 PNG 返回 0。 */
+function pngPixels(filePath: string): number {
+  try {
+    if (!filePath.toLowerCase().endsWith('.png')) return 0
+    const fd = openSync(filePath, 'r')
+    try {
+      const header = Buffer.alloc(24)
+      if (readSync(fd, header, 0, 24, 0) < 24) return 0
+      return header.readUInt32BE(16) * header.readUInt32BE(20)
+    } finally {
+      closeSync(fd)
+    }
+  } catch (e) {
+    return 0
+  }
+}
 
 /** argv 向量 subprocess（无 shell）；stdout/stderr 有界，超时/取消即 SIGKILL。 */
 export async function spawnBounded(argv: string[], opts: SpawnOptions = {}): Promise<SpawnResult> {
@@ -202,9 +219,10 @@ export class Runtime {
     this.deps.logger.info({ cancelled: controllers.length }, 'runtime disposed')
   }
 
-  private metricSpecs(spec: unknown): { images: number; imageBytes: number } {
+  private metricSpecs(spec: unknown): { images: number; imageBytes: number; imagePixels: number } {
     let images = 0
     let imageBytes = 0
+    let imagePixels = 0
     if (typeof spec === 'object' && spec !== null) {
       const record = spec as Record<string, unknown>
       const paths: string[] = []
@@ -222,11 +240,13 @@ export class Runtime {
       }
       for (const p of paths) {
         try {
-          imageBytes += statSync(p).size
+          const stat = statSync(p)
+          imageBytes += stat.size
+          imagePixels += pngPixels(p)
         } catch (e) { /* 无权限/不存在忽略 */ }
       }
     }
-    return { images, imageBytes }
+    return { images, imageBytes, imagePixels }
   }
 
   private metric(fields: Record<string, unknown>): void {
@@ -250,12 +270,13 @@ export class Runtime {
     this.active.add(controller)
     const onAbort = () => controller.abort()
     callerSignal?.addEventListener('abort', onAbort, { once: true })
-    const { images, imageBytes } = this.metricSpecs(spec)
+    const { images, imageBytes, imagePixels } = this.metricSpecs(spec)
     const baseMetric = {
       tool: opts.meta?.toolName ?? sub,
       sub,
       images,
       imageBytes,
+      imagePixels,
       model: typeof opts.env?.DSH_VISION_MODEL === 'string' ? opts.env.DSH_VISION_MODEL : '',
       cacheHit: opts.meta?.cacheHit ?? false,
     }

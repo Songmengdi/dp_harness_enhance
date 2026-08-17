@@ -1,15 +1,9 @@
-import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { VisionError } from '../errors.js'
-import { jsonOutput, agentWorkspace, type ToolEnv } from './common.js'
+import { jsonOutput, agentWorkspace, sanitizeStem, withStaging, type ToolEnv } from './common.js'
 import { pngProbe } from './frames.js'
-
-function stemOf(raw: unknown, fallback: string): string {
-  if (raw === undefined || raw === null || String(raw).trim() === '') return fallback
-  return String(raw).replace(/[^0-9A-Za-z._-]/g, '_').slice(0, 40)
-}
 
 interface HtmlShotResult {
   source: { path: string; bytes: number }
@@ -42,8 +36,7 @@ export function defineHtmlScreenshotTool(env: ToolEnv) {
       if (ext !== '.html' && ext !== '.htm') {
         throw new VisionError('input', `只接受工作区内的本地 .html/.htm（拒绝 URL 与 data URI）: ${args.source}`)
       }
-      const staging = await fence.beginStaging()
-      try {
+      return withStaging(fence, async (staging) => {
         const raw = (await env.runtime.run(
           'html_screenshot',
           { source: real, width: args.width, height: args.height, scale: args.scale, waitMs: args.waitMs, outDir: staging },
@@ -55,17 +48,14 @@ export function defineHtmlScreenshotTool(env: ToolEnv) {
         const stamp = crypto.randomBytes(4).toString('hex')
         const committed = await fence.commitFiles(staging, [{
           staging: path.basename(raw.file),
-          finalName: `${stemOf(args.output, 'shot')}_${stamp}.png`,
+          finalName: `${sanitizeStem(args.output, 'shot')}_${stamp}.png`,
           sourceTool: 'vision_html_screenshot',
           kind: 'image',
           description: `HTML 渲染 ${path.basename(real)} ${raw.viewport.width}x${raw.viewport.height}`,
           probe: pngProbe,
         }])
         return { source: raw.source, viewport: raw.viewport, rendered: raw.rendered, artifact: committed[0] }
-      } catch (e) {
-        await fsp.rm(staging, { recursive: true, force: true }).catch(() => {})
-        throw e
-      }
+      })
     },
   })
 }

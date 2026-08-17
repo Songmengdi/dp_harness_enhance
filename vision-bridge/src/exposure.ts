@@ -123,16 +123,24 @@ export class Exposure {
     return this.guideDefinition
   }
 
-  /** 会话持久事件里的激活证据：调过 vision_activate 或任一 vision_* 执行工具。 */
+  /** 会话持久事件里的激活证据：调过 vision_* 工具，或消息里出现过本插件落盘的粘贴路径。 */
   private hasActivationEvidence(agent: Agent): boolean {
     const execNames = new Set(this.opts.execToolNames())
     try {
       const events = agent.session?.events ?? []
       for (const event of events) {
         const type = (event as { type?: string }).type
-        const data = (event as { data?: { name?: unknown } }).data
+        const data = (event as { data?: { name?: unknown; message?: unknown } }).data
         if (type === 'tool/call' && typeof data?.name === 'string') {
           if (data.name === 'vision_activate' || execNames.has(data.name)) return true
+        }
+        if (type === 'user/message') {
+          const message = data?.message as { content?: Array<{ type?: string; text?: unknown }> } | undefined
+          const text = (message?.content ?? [])
+            .filter((b) => b.type === 'text')
+            .map((b) => String(b.text ?? ''))
+            .join('\n')
+          if (/inputs[/\\]vision-bridge[/\\][0-9a-f]{64}\./.test(text)) return true
         }
       }
     } catch (e) { /* 会话事件不可读则无证据 */ }
@@ -204,11 +212,15 @@ export class Exposure {
     }
   }
 
-  /** 激活当前 Agent：执行工具全部注册进该 Agent，引导工具回收。 */
+  /** 激活当前 Agent：执行工具全部注册进该 Agent，引导工具回收。runtime 未就绪不发布任何能力。 */
   activate(agent: Agent, reason: string): ActivateResult {
     const state = this.stateOf(agent)
     if (state.activated) {
       return { activated: false, tools: this.opts.execToolNames() }
+    }
+    if (!this.opts.runtimeReady()) {
+      this.opts.logger.warn({ agent: agent.id, reason }, 'activation deferred — runtime not ready')
+      return { activated: false, tools: [] }
     }
     state.activated = true
     state.activationReason = reason

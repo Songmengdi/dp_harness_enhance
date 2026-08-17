@@ -1,6 +1,7 @@
+import { promises as fsp } from 'node:fs'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { Runtime } from '../runtime.js'
-import type { FenceRegistry } from '../paths.js'
+import type { FenceRegistry, PathFence } from '../paths.js'
 
 export interface ToolEnv {
   fences: FenceRegistry
@@ -18,6 +19,27 @@ export function jsonOutput() {
 }
 
 export function agentWorkspace(exec: { agent?: unknown }): string | undefined {
-  const agent = exec.agent as { session?: { header?: { cwd?: string } } } | undefined
-  return agent?.session?.header?.cwd
+  return workspaceOfAgent(exec.agent)
+}
+
+export function workspaceOfAgent(agent: unknown): string | undefined {
+  const session = (agent as { session?: unknown })?.session
+  return (session as { header?: { cwd?: string } } | undefined)?.header?.cwd
+}
+
+/** 文件名主干净化：只留 [0-9A-Za-z._-]。 */
+export function sanitizeStem(raw: unknown, fallback: string): string {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return fallback
+  return String(raw).replace(/[^0-9A-Za-z._-]/g, '_').slice(0, 40)
+}
+
+/** staging 生命周期：失败即清理目录并重抛。 */
+export async function withStaging<T>(fence: PathFence, fn: (staging: string) => Promise<T>): Promise<T> {
+  const staging = await fence.beginStaging()
+  try {
+    return await fn(staging)
+  } catch (e) {
+    await fsp.rm(staging, { recursive: true, force: true }).catch(() => {})
+    throw e
+  }
 }

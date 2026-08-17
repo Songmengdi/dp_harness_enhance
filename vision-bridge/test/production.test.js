@@ -100,11 +100,17 @@ test('dispose: 先取消活动视觉操作并等待终止，之后拒绝新操�
     const { manager } = makeManager(tmp)
     const logger = makeLogger()
     const runtime = new Runtime({ manager, defaultTimeoutMs: 60_000, maxConcurrency: 2, logger, validators: makeValidators() })
+    const ws = join(tmp, 'ws')
+    mkdirSync(ws, { recursive: true })
+    writeFileSync(join(ws, 'a.png'), Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64',
+    ))
     const inFlight = runtime.run(
       'glance',
       {
-        images: [], query: 'HANG', endpoint: `http://127.0.0.1:${port}/v1`, model: 'm',
-        apiKey: SECRET, language: '中文', protocol: 'openai-completions', maxRetries: 0, timeoutMs: 55_000,
+        images: [join(ws, 'a.png')], query: 'HANG', endpoint: `http://127.0.0.1:${port}/v1`, model: 'm',
+        language: '中文', protocol: 'openai-completions', maxRetries: 0, timeoutMs: 55_000,
       },
       { env: { DSH_VISION_API_KEY: SECRET }, timeoutMs: 60_000 },
     ).catch((e) => e)

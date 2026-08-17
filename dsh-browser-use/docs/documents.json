@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "title": "dsh-browser-use Browser Automation API",
+  "documents": [
+    { "path": "overview.md", "title": "Overview", "name": "overview", "mode": "included" }
+  ]
+}

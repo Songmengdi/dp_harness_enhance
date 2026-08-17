@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "entrypoints": [
+    "agent.browsers.getDefault()",
+    "agent.browsers.get(\"iab\")",
+    "agent.browsers.getForUrl(url)"
+  ],
+  "semantics": {
+    "success": "High-level methods return payloads directly.",
+    "failure": "High-level methods throw BrowserCommandError with code, command, and raw result.",
+    "discovery": "list() returns only backends reported by the host broker.",
+    "playwright": "Playwright is a Tab API surface. domSnapshot() returns the AI/ARIA tree plus refs."
+  },
+  "types": {
+    "TabInfo": "{ id: string; active?: boolean; title?: string; url?: string; viewport: { width: number; height: number } }",
+    "BrowserViewportSize": "{ width: number; height: number }"
+  },
+  "objects": {
+    "Agent": {
+      "members": [
+        { "name": "browsers", "kind": "property", "signature": "browsers: Browsers" },
+        { "name": "documentation", "kind": "property", "signature": "documentation: Documentation" }
+      ]
+    },
+    "Browsers": {
+      "members": [
+        { "name": "list", "kind": "method", "signature": "list(): Promise<BrowserDescriptor[]>" },
+        { "name": "get", "kind": "method", "signature": "get(idOrType: string): Promise<Browser>" },
+        { "name": "getDefault", "kind": "method", "signature": "getDefault(): Promise<Browser>" },
+        { "name": "getForUrl", "kind": "method", "signature": "getForUrl(url: string): Promise<Browser>" }
+      ]
+    },
+    "Browser": {
+      "members": [
+        { "name": "browserId", "kind": "property", "signature": "browserId: string" },
+        { "name": "tabs", "kind": "property", "signature": "tabs: Tabs" },
+        { "name": "user", "kind": "property", "signature": "user: BrowserUser" },
+        { "name": "capabilities", "kind": "property", "signature": "capabilities: BrowserCapabilityCollection" },
+        { "name": "documentation", "kind": "method", "signature": "documentation(): Promise<string>" }
+      ]
+    },
+    "Tabs": {
+      "members": [
+        { "name": "list", "kind": "method", "signature": "list(): Promise<TabInfo[]>" },
+        { "name": "get", "kind": "method", "signature": "get(id: string): Promise<Tab>" },
+        { "name": "new", "kind": "method", "signature": "new(): Promise<Tab>" },
+        { "name": "selected", "kind": "method", "signature": "selected(): Promise<Tab | undefined>" }
+      ]
+    },
+    "BrowserUser": {
+      "members": [
+        { "name": "openTabs", "kind": "method", "signature": "openTabs(): Promise<BrowserUserTabInfo[]>" },
+        { "name": "claimTab", "kind": "method", "signature": "claimTab(tab: string | BrowserUserTabInfo): Promise<Tab>" }
+      ]
+    },
+    "Tab": {
+      "members": [
+        { "name": "id", "kind": "property", "signature": "id: string" },
+        { "name": "goto", "kind": "method", "signature": "goto(url: string): Promise<void>" },
+        { "name": "url", "kind": "method", "signature": "url(): Promise<string | undefined>" },
+        { "name": "title", "kind": "method", "signature": "title(): Promise<string | undefined>" },
+        { "name": "screenshot", "kind": "method", "signature": "screenshot(options?): Promise<Uint8Array>" },
+        { "name": "setViewportSize", "kind": "method", "signature": "setViewportSize({ width, height }): Promise<void>" },
+        { "name": "close", "kind": "method", "signature": "close(): Promise<void>" },
+        { "name": "playwright", "kind": "property", "signature": "playwright: PlaywrightAPI" }
+      ]
+    },
+    "PlaywrightAPI": {
+      "members": [
+        { "name": "domSnapshot", "kind": "method", "signature": "domSnapshot(): Promise<string>" },
+        { "name": "getByRole", "kind": "method", "signature": "getByRole(role, options?): PlaywrightLocator" },
+        { "name": "getByText", "kind": "method", "signature": "getByText(text, options?): PlaywrightLocator" },
+        { "name": "getByLabel", "kind": "method", "signature": "getByLabel(text, options?): PlaywrightLocator" },
+        { "name": "getByPlaceholder", "kind": "method", "signature": "getByPlaceholder(text, options?): PlaywrightLocator" },
+        { "name": "getByTestId", "kind": "method", "signature": "getByTestId(testId): PlaywrightLocator" },
+        { "name": "locator", "kind": "method", "signature": "locator(selector): PlaywrightLocator" },
+        { "name": "evaluate", "kind": "method", "signature": "evaluate(pageFunction, arg?): Promise<TResult>" },
+        { "name": "waitForLoadState", "kind": "method", "signature": "waitForLoadState(options?): Promise<void>" },
+        { "name": "waitForURL", "kind": "method", "signature": "waitForURL(url, options?): Promise<void>" },
+        { "name": "waitForTimeout", "kind": "method", "signature": "waitForTimeout(timeoutMs): Promise<void>" }
+      ]
+    },
+    "PlaywrightLocator": {
+      "members": [
+        { "name": "count", "kind": "method", "signature": "count(): Promise<number>" },
+        { "name": "click", "kind": "method", "signature": "click(options?): Promise<void>" },
+        { "name": "dblclick", "kind": "method", "signature": "dblclick(options?): Promise<void>" },
+        { "name": "fill", "kind": "method", "signature": "fill(value, options?): Promise<void>" },
+        { "name": "press", "kind": "method", "signature": "press(value, options?): Promise<void>" },
+        { "name": "selectOption", "kind": "method", "signature": "selectOption(value, options?): Promise<void>" },
+        { "name": "check", "kind": "method", "signature": "check(options?): Promise<void>" },
+        { "name": "uncheck", "kind": "method", "signature": "uncheck(options?): Promise<void>" },
+        { "name": "setChecked", "kind": "method", "signature": "setChecked(checked, options?): Promise<void>" },
+        { "name": "textContent", "kind": "method", "signature": "textContent(options?): Promise<string | null>" },
+        { "name": "innerText", "kind": "method", "signature": "innerText(options?): Promise<string>" },
+        { "name": "getAttribute", "kind": "method", "signature": "getAttribute(name, options?): Promise<string | null>" },
+        { "name": "isVisible", "kind": "method", "signature": "isVisible(): Promise<boolean>" },
+        { "name": "isEnabled", "kind": "method", "signature": "isEnabled(): Promise<boolean>" },
+        { "name": "allTextContents", "kind": "method", "signature": "allTextContents(): Promise<string[]>" },
+        { "name": "waitFor", "kind": "method", "signature": "waitFor(options): Promise<void>" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,26 @@
+# dsh-browser-use bundle patch: mounts the plugin into a dsh profile composition.
+# The plugin registers browser_* tools (host), a /browser-use HTTP API for the
+# live panel, a conversation view tab (client), and two skills.
+#
+# Install: `dsh plugin --profile <name> add dsh-browser-use`
+- insert:
+    - id: browser-use
+      name: dsh-browser-use
+      config:
+        # Browser launch strategy.
+        # executablePath: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+        # channel: chrome            # auto-detected if omitted (chrome -> msedge -> chromium)
+        headless: false              # false = 打开可见 Chrome 窗口（默认，类 ZCode/Codex）；true = 仅面板截图
+        # Persistent profile keeps login state across restarts.
+        userDataDir: ""              # empty => $DSH_HOME/browser-use/profile
+        viewport:
+          width: 1280
+          height: 800
+        navigationTimeoutMs: 30000
+        actionTimeoutMs: 15000
+        screenshotDir: browser-screenshots
+        allowEval: false             # browser_eval is disabled unless explicitly enabled
+        allowPrivate: true           # allow localhost / private LAN (dev-friendly); cloud metadata is always blocked
+        allowedHosts: []
+        blockedHosts: []
+        enableMcpBridge: true        # false 时关闭 Codex 式 node_repl MCP bridge，只保留 browser_* 工具

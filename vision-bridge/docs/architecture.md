@@ -63,6 +63,21 @@ Python runtime      python -m dsh_vision <sub> --spec '<json>'（独立 venv，�
 `config / input / capacity / upstream / runtime / output / cancelled / timeout`。
 Host 侧统一成 `VisionError(category, message)`，工具失败时模型看到 `[category] message`。
 
+## 生产化（05 票）
+
+- **配置热更新**：settings 段 `dsh-vision-bridge`（schema 同装配 config，`applies: live`）→
+  校验 → staging 准备候选（独立 venv + 探针全过）→ 原子切换 generation；
+  任何失败保留旧 generation 继续服务并记录「配置被拒 / 运行时不可用」原因。
+  工具定义惰性取用当前 runtime（`manager.ensureReady()` 每次拿 generation），无需重注册。
+- **卸载顺序**：`runtime.dispose()`（取消活动操作并等待收敛）→ `exposure.disposeAll()`
+  （逐 Agent 回收工具与 skill）→ `manager.dispose()`；无残留注册。
+- **指标**：`vision-metric` 结构化日志（工具名、总耗时、上游耗时、图片数量/字节、模型、
+  缓存命中、错误类别）；不含密钥、base64 与无界上游正文。
+- **门禁**：`npm run verify` = 测试门禁（零测试即失败）→ typecheck → build →
+  Python 全量语法检查（compileall）→ 全量 node --test → npm pack dry-run。
+- **e2e**：`scripts/clean-home-e2e.mjs` 在干净 DSH_HOME 走完整生命周期
+  （安装 → 装配可见 → 激活/调用 → 禁用 → 重新启用 → 卸载无残留）。
+
 ## 测试防线
 
 - `scripts/test-gate.mjs`：门禁——`test/*.test.js` 零文件或零 `test()` 即失败。

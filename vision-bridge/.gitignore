@@ -3,3 +3,6 @@ lib/
 *.tgz
 *.log
 __pycache__/
+
+# 闭合示例运行产物（脚本每次重新生成）
+examples/render-verify/artifacts/

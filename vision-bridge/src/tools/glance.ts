@@ -72,7 +72,7 @@ export function defineGlanceTool(env: RemoteToolEnv) {
       const value = (await env.remote.run(
         'glance',
         { images: reals, query: args.query, ocr: args.ocr, region: args.region, timeoutMs: args.timeoutMs },
-        { signal: exec.signal },
+        { signal: exec.signal, cacheHit: false },
       )) as JsonValue
       env.cache.set(agentId, key, value)
       return value

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { statSync } from 'node:fs'
 import { VisionError } from './errors.js'
 import type { BridgeLogger } from './logger.js'
 import type { RuntimeManager } from './runtime-manager.js'
@@ -163,6 +164,11 @@ export interface RunOptions {
   env?: Record<string, string>
   maxStdoutBytes?: number
   maxStderrBytes?: number
+  /** 指标元数据（不进子进程）：工具名/缓存命中。 */
+  meta?: {
+    toolName?: string
+    cacheHit?: boolean
+  }
 }
 
 export interface RuntimeDeps {
@@ -176,8 +182,56 @@ export interface RuntimeDeps {
 /** 统一执行总闸门：输入校验（调用方）→ 并发信号量 → subprocess → JSON 契约校验。 */
 export class Runtime {
   private readonly semaphore: Semaphore
+  private readonly active = new Set<AbortController>()
+  private disposed = false
   constructor(private readonly deps: RuntimeDeps) {
     this.semaphore = new Semaphore(deps.maxConcurrency)
+  }
+
+  /** 卸载清理：取消所有活动视觉操作并等待终止。 */
+  async dispose(): Promise<void> {
+    this.disposed = true
+    const controllers = [...this.active]
+    for (const controller of controllers) controller.abort()
+    // 等待活动操作收敛（子进程被 SIGKILL 后 promise 落定）
+    let waited = 0
+    while (this.active.size > 0 && waited < 5000) {
+      await new Promise((r) => setTimeout(r, 50))
+      waited += 50
+    }
+    this.deps.logger.info({ cancelled: controllers.length }, 'runtime disposed')
+  }
+
+  private metricSpecs(spec: unknown): { images: number; imageBytes: number } {
+    let images = 0
+    let imageBytes = 0
+    if (typeof spec === 'object' && spec !== null) {
+      const record = spec as Record<string, unknown>
+      const paths: string[] = []
+      if (Array.isArray(record.images)) {
+        for (const p of record.images) if (typeof p === 'string') paths.push(p)
+        images = paths.length
+      } else {
+        for (const key of ['image', 'original', 'rebuilt', 'path', 'source']) {
+          if (typeof record[key] === 'string') {
+            paths.push(record[key] as string)
+            images = 1
+            break
+          }
+        }
+      }
+      for (const p of paths) {
+        try {
+          imageBytes += statSync(p).size
+        } catch (e) { /* 无权限/不存在忽略 */ }
+      }
+    }
+    return { images, imageBytes }
+  }
+
+  private metric(fields: Record<string, unknown>): void {
+    // 指标日志只含白名单字段，绝不输出密钥/base64/无界上游正文
+    this.deps.logger.info(fields, 'vision-metric')
   }
 
   async run(sub: string, spec: unknown, opts: RunOptions = {}): Promise<unknown> {
@@ -186,8 +240,25 @@ export class Runtime {
     if (generation === null) {
       throw new VisionError('config', `运行时未就绪：${manager.lastError ?? '准备中或准备失败'}`)
     }
+    if (this.disposed) {
+      throw new VisionError('cancelled', '运行时正在卸载，拒绝新操作')
+    }
     const release = await this.semaphore.acquire(opts.signal)
     const startedAt = Date.now()
+    const callerSignal = opts.signal
+    const controller = new AbortController()
+    this.active.add(controller)
+    const onAbort = () => controller.abort()
+    callerSignal?.addEventListener('abort', onAbort, { once: true })
+    const { images, imageBytes } = this.metricSpecs(spec)
+    const baseMetric = {
+      tool: opts.meta?.toolName ?? sub,
+      sub,
+      images,
+      imageBytes,
+      model: typeof opts.env?.DSH_VISION_MODEL === 'string' ? opts.env.DSH_VISION_MODEL : '',
+      cacheHit: opts.meta?.cacheHit ?? false,
+    }
     try {
       const env: Record<string, string | undefined> = { ...process.env, ...generation.env, ...opts.env }
       const secrets = opts.env ? Object.values(opts.env).filter((v): v is string => typeof v === 'string') : []
@@ -195,7 +266,7 @@ export class Runtime {
         [generation.pythonBin, '-m', 'dsh_vision', sub, '--spec', JSON.stringify(spec)],
         {
           env,
-          signal: opts.signal,
+          signal: controller.signal,
           timeoutMs: opts.timeoutMs ?? this.deps.defaultTimeoutMs,
           maxStdoutBytes: opts.maxStdoutBytes,
           maxStderrBytes: opts.maxStderrBytes,
@@ -203,15 +274,15 @@ export class Runtime {
       )
       const durationMs = Date.now() - startedAt
       if (spawnResult.cancelled) {
-        this.deps.logger.info({ sub, durationMs, category: 'cancelled' })
+        this.metric({ ...baseMetric, totalMs: durationMs, category: 'cancelled' })
         throw new VisionError('cancelled', `vision_${sub} 已取消`)
       }
       if (spawnResult.timedOut) {
-        this.deps.logger.info({ sub, durationMs, category: 'timeout' })
+        this.metric({ ...baseMetric, totalMs: durationMs, category: 'timeout' })
         throw new VisionError('timeout', `vision_${sub} 超过 ${opts.timeoutMs ?? this.deps.defaultTimeoutMs}ms 被终止`)
       }
       if (spawnResult.stdoutTruncated || spawnResult.stderrTruncated) {
-        this.deps.logger.info({ sub, durationMs, category: 'output' })
+        this.metric({ ...baseMetric, totalMs: durationMs, category: 'output' })
         throw new VisionError('output', `vision_${sub} 输出超出上限，进程被终止`)
       }
       const stderrText = redact(spawnResult.stderr.trim(), secrets)
@@ -220,33 +291,43 @@ export class Runtime {
         try {
           envelope = JSON.parse(spawnResult.stdout)
         } catch (e) {
+          this.metric({ ...baseMetric, totalMs: durationMs, category: 'output' })
           throw new VisionError('output', `vision_${sub} stdout 不是合法 JSON 契约`)
         }
         if (typeof envelope !== 'object' || envelope === null || !('ok' in envelope)) {
+          this.metric({ ...baseMetric, totalMs: durationMs, category: 'output' })
           throw new VisionError('output', `vision_${sub} stdout 缺少 ok 字段（契约违反）`)
         }
-        const body = envelope as { ok: boolean; result?: unknown; error?: { category?: string; message?: string } }
+        const body = envelope as {
+          ok: boolean
+          result?: unknown
+          error?: { category?: string; message?: string }
+          timingMs?: number
+        }
+        const upstreamMs = typeof body.timingMs === 'number' ? body.timingMs : undefined
         if (!body.ok) {
           const category = isCategory(body.error?.category) ? body.error!.category! : 'runtime'
           const message = redact(body.error?.message ?? '未知错误', secrets)
-          this.deps.logger.info({ sub, durationMs, category })
+          this.metric({ ...baseMetric, totalMs: durationMs, upstreamMs, category })
           throw new VisionError(category, message)
         }
         const validate = this.deps.validators[sub]
         try {
           validate?.(body.result)
         } catch (e) {
-          this.deps.logger.info({ sub, durationMs, category: 'output' })
+          this.metric({ ...baseMetric, totalMs: durationMs, upstreamMs, category: 'output' })
           throw new VisionError('output', `vision_${sub} 结果契约校验失败: ${e instanceof Error ? e.message : String(e)}`)
         }
-        this.deps.logger.info({ sub, durationMs, category: 'ok' })
+        this.metric({ ...baseMetric, totalMs: durationMs, upstreamMs, category: 'ok' })
         return body.result
       }
       const category = exitCategory(spawnResult.exitCode)
       const message = stderrText ? stderrText.slice(-400) : `vision_${sub} 退出码 ${spawnResult.exitCode}`
-      this.deps.logger.info({ sub, durationMs, category })
+      this.metric({ ...baseMetric, totalMs: durationMs, category })
       throw new VisionError(category, message)
     } finally {
+      callerSignal?.removeEventListener('abort', onAbort)
+      this.active.delete(controller)
       release()
     }
   }

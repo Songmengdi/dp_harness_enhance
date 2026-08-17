@@ -165,14 +165,19 @@ export class PathFence {
   }
 }
 
-/** 按工作区缓存 fence（allowedDirs 与产物/输入子目录不变）。 */
+/** 按工作区缓存 fence（allowedDirs 与产物/输入子目录不变；05 票热更新可换 allowedDirs）。 */
 export class FenceRegistry {
   private readonly cache = new Map<string, PathFence>()
   constructor(
-    private readonly allowedDirs: string[],
+    private allowedDirs: string[],
     private readonly artifactsRel: string,
     private readonly inputsRel: string,
   ) {}
+
+  updateAllowedDirs(dirs: string[]): void {
+    this.allowedDirs = dirs
+    this.cache.clear()
+  }
 
   async forWorkspace(workspace: string | undefined): Promise<PathFence> {
     const key = workspace || process.cwd()

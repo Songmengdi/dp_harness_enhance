@@ -1,55 +1,62 @@
-# vision-hook 维护说明（粘贴图片落地转路径 + 读图拦截）
+# vision-bridge 维护说明（Route C 本地交付）
 
-> 本文件与源码同在项目内：`vision-bridge/`（见 README.md 的目录结构）。
+> 本文件与源码同在项目内：`vision-bridge/`。架构说明见 `docs/architecture.md`。
 
-## 文件清单（运行时位置）
+## 文件清单
 
-- 插件源码（唯一真源）：`vision-bridge/plugin/lib/index.js`
-  - 运行时通过符号链接加载：`~/.dsh/profiles/web/vision-hook → <项目>/vision-bridge/plugin`
-    （预设行 `- id: vision-hook` / `name: vision-hook` 经 profile 的 node_modules 解析到该链接）
-  - 用户预设（配置，非源码）：`~/.dsh/.agent-presets/vision/`（视觉增强）与
-    `cordis-vision/`（创造+视觉增强）——预设发现只认真实目录，不跟随符号链接，
-    所以这两份留在 `~/.dsh` 下；改预设行时记得同步此处的说明。
-- CLI 源码（唯一真源）：`vision-bridge/cli/dsh-vision`
-  - 插件启动时把它安装到 `~/.dsh/bin/dsh-vision`（installCli 优先读本文件，读不到才用内嵌副本）
-  - `node vision-bridge/sync-cli.js` 把本文件同步进插件的内嵌 CLI_SRC 块（回退副本防漂移）
-- 出厂补丁（升级 dsh 后会被覆盖，需重新打）：
-  `<dsh 安装目录>/node_modules/@deepseek-ai/dsh-host-apiproxy/lib/index.js`
-  （本机为 `/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-host-apiproxy/lib/index.js`）
+- Host 插件源码（TypeScript）：`src/` → 构建产物 `lib/`（`npm run build`；`lib/` 不入库）。
+- Python runtime：`runtime/dsh_vision/`（独立 venv 内运行；`runtime/requirements.lock` 锁定依赖）。
+- 打包 skill：`skills/vision-bridge/SKILL.md`（明眼人协议唯一来源，按 Agent 注册）。
+- 测试/验证：
+  - `npm run verify`（门禁 → typecheck → build → Python 语法检查 → 全量测试 → 打包 dry-run）
+  - `npm run e2e`（真实 dsh host headless e2e，profile `vision-bridge-e2e`）
+  - `node scripts/clean-home-e2e.mjs`（干净 DSH_HOME 全生命周期）
+  - `node scripts/render-verify.mjs`（闭合示例，无 key）
 
-## 出厂补丁内容（三处，可对照 grep `imageBridgeActive` 找回）
+## 运行时布局
 
-1. 新增函数 `imageBridgeActive(ctx, agent)`：解析会话所属预设的组成文本，
-   含 `vision-hook` 行（正则 `-\s*id:\s*vision-hook\b`）即返回 true；任何失败保守返回 false。
-2. `prompt` 端点图片门槛：模型不支持图片时，条件尾部加
-   `&& (await imageBridgeActive(ctx, agent)) === false` 才拒绝
-   （否则拒绝 reason 为 MODEL_DOES_NOT_SUPPORT_IMAGES，钩子永远收不到图片）。
-3. `selectModel` 端点：会话已含图片、切换纯文本模型时同样放行 vision-hook 预设。
+- managed venv：`$DSH_HOME/storages/dsh-vision-bridge/venv`（或配置 `venvDir`）。
+- 产物：`<工作区>/artifacts/vision-bridge/`；粘贴截图：`<工作区>/inputs/vision-bridge/`。
+- 配置热更新（settings 段 `dsh-vision-bridge`）：先验证、staging 准备候选、原子切换 generation；
+  失败保留旧运行时。
 
-## 工作流
+## 出厂补丁（粘贴通道，dsh 升级后会被覆盖，需重打）
 
-用户粘贴截图 → 消息以 image block（attachment 引用）进入会话
-→ `agent/pre-step` 钩子（仅纯文本模型会话生效）只做一件事：
-  图片字节落盘到系统临时目录 `$TMPDIR/dsh-vision-paste/<id>.<ext>`
-  （OS 定期自动清理，无需手动维护），
-  并把 image block 替换成纯文件路径文本，不附加任何说明（钩子不调用视觉模型）
-→ 模型按原有流程自己查看该文件（read 图片会被拦截并指路 dsh-vision CLI）。
-视觉模型会话（如 doubao）整套不拦截。
+dsh 宿主 `dsh-host-apiproxy` 在 `prompt` 与 `selectModel` 两个端点对不支持图片的模型
+拒绝带图消息，Route C 的粘贴桥会被挡在插件之外。补丁让「装配行含 dsh-vision-bridge」
+的 profile 放行图片（图片由插件 `agent/pre-step` 落地为路径，模型只看到路径文本）。
 
-## 明眼人协议（教文本模型如何给视觉模型写题）
+目标文件：
+`<dsh 安装目录>/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-host-apiproxy/lib/index.js`
+（本机：`/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-host-apiproxy/lib/index.js`）
 
-同款协议出现在三个 agent 可见位置，改协议要三处一起改：
-1. `read`/`read_image` 拦截的 deny reason（插件 `tools/pre-execute`）；
-2. 系统提示注入段 `USAGE_SECTION`（插件内，触发后按会话注入）；
-3. CLI 内置 `USAGE`（`dsh-vision` 不带参数时打印，改 `cli/dsh-vision` 后跑 sync-cli.js）。
+三处修改（可对照 grep `imageBridgeActive` 找回）：
 
-核心内容：第一轮先要全景描述再核对假设；提问要具体可观测
-（数量/颜色/方位+坐标/文字逐字）；每次提问要求五段式回答
-（直接回答/实际所见/证据/信心/补充），绝不接受只答是/否；
-对关键声明追问证据，对方说不确定就要求明说。
-OCR 与"交叉验证"字样已按用户要求全部移除。
+1. 新增函数（放在 `selectionFor` 之前）：
 
-## 重启生效
+```js
+// vision-bridge 出厂补丁（Route C）：dsh-vision-bridge 装配行存在且未禁用时，
+// 图片消息放行给插件（agent/pre-step 会把图片落地为路径，纯文本模型照常工作）。
+function imageBridgeActive(ctx) {
+	try {
+		const loader = ctx.get('loader');
+		for (const entry of loader.entries()) {
+			if (entry.id === 'dsh-vision-bridge' && entry.disabled !== true) return true;
+		}
+	} catch (e) {
+	}
+	return false;
+}
+```
 
-插件与补丁都在进程启动时加载：改动后执行 `dsh-web restart`。
-（CLI 会在每次插件启动时自动重装到 `~/.dsh/bin/dsh-vision`。）
+2. `prompt` 端点（`hasImage` 门槛）：条件尾部加 `&& imageBridgeActive(ctx) === false`
+   才拒绝（否则 reason 为 `MODEL_DOES_NOT_SUPPORT_IMAGES`，插件永远收不到图片）。
+3. `selectModel` 端点：会话已含图片、切到不支持图片的模型时同样放行 vision-bridge profile。
+
+重打后 `node --check <该文件>` 验证语法。改动在 dsh 进程启动时加载：`dsh-web restart`。
+
+## 卸载
+
+`dsh plugin --profile <profile> remove dsh-vision-bridge`。
+插件卸载顺序：取消活动视觉操作并等待 → 逐 Agent 回收工具与 skill → 关运行时管理器；
+卸载后装配清单与工具目录无残留。

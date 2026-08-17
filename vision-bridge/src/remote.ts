@@ -27,6 +27,11 @@ export class RemoteVision {
     private readonly logger: BridgeLogger,
   ) {}
 
+  /** 05 票热更新：非运行时字段（端点/模型/凭据引用等）直接换新。 */
+  updateConfig(next: Partial<RemoteConfig>): void {
+    Object.assign(this.config, next)
+  }
+
   get target() {
     return {
       endpoint: this.config.endpoint,
@@ -52,7 +57,7 @@ export class RemoteVision {
   }
 
   /** 远程子命令统一入口：配置校验 → 现取凭据 → 注入环境 → subprocess。 */
-  async run(sub: 'glance' | 'ground' | 'detect' | 'long_screenshot_ocr', spec: Record<string, unknown>, opts: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<unknown> {
+  async run(sub: 'glance' | 'ground' | 'detect' | 'long_screenshot_ocr', spec: Record<string, unknown>, opts: { signal?: AbortSignal; timeoutMs?: number; cacheHit?: boolean } = {}): Promise<unknown> {
     if (!this.config.endpoint.trim() || !this.config.model.trim()) {
       throw new VisionError('config', '未配置视觉端点/模型：请在 bundle 装配行的 config 里填 endpoint 与 model（D8）')
     }
@@ -82,6 +87,7 @@ export class RemoteVision {
       signal: opts.signal,
       timeoutMs: timeoutMs + 10_000, // 给 Python 硬超时留出余量，Host 兜底
       env,
+      meta: { toolName: 'vision_' + sub.replace('long_screenshot_ocr', 'long_screenshot_ocr'), cacheHit: opts.cacheHit ?? false },
     })
   }
 }
@@ -93,7 +99,12 @@ export class RemoteVision {
 export class GlanceCache {
   private readonly maps = new Map<string, Map<string, { value: unknown; at: number }>>()
 
-  constructor(private readonly ttlMs: number, private readonly logger: BridgeLogger) {}
+  constructor(private ttlMs: number, private readonly logger: BridgeLogger) {}
+
+  setTtl(ttlMs: number): void {
+    this.ttlMs = ttlMs
+    if (ttlMs <= 0) this.maps.clear()
+  }
 
   async keyFor(args: {
     images: string[]

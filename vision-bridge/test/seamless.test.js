@@ -60,7 +60,7 @@ function makeEnv(overrides = {}) {
     logger: noop,
     attachments,
     remote: overrides.remote,
-    autoDescribeBashShots: overrides.autoDescribeBashShots ?? false,
+    isAutoDescribeEnabled: () => overrides.autoDescribeBashShots ?? false,
   }
   const ctx = fakeCtx()
   const seamless = new Seamless(ctx, deps)

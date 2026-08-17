@@ -58,7 +58,7 @@
     "prepare": "npm run build",
     "test": "npm run build && node --test test/*.test.js",
     "gate": "node scripts/test-gate.mjs",
-    "verify": "node scripts/test-gate.mjs && npm run typecheck && npm run build && npm run test",
+    "verify": "node scripts/test-gate.mjs && npm run typecheck && npm run build && python3 -m compileall -q runtime/dsh_vision && npm run test && npm run pack:dry",
     "pack:dry": "npm pack --dry-run",
     "e2e": "node scripts/sync-e2e-profile.mjs && dsh --profile vision-bridge-e2e run-vision-bridge-e2e"
   }

@@ -86,6 +86,15 @@ async function run(ctx) {
     })
     const { agent } = handle
 
+    // 禁用态断言（VB_EXPECT_DISABLED=1）：插件被 disabled 时任何 vision_* 工具都不该出现
+    if (process.env.VB_EXPECT_DISABLED === '1') {
+      await new Promise((r) => setTimeout(r, 2000))
+      const gone = ctx.tools.get('vision_activate', agent) === undefined && ctx.tools.get('vision_ground', agent) === undefined
+      step('禁用状态：无任何 vision_* 工具', gone, 'vision_activate=' + String(ctx.tools.get('vision_activate', agent) !== undefined))
+      report.pass = true
+      return report
+    }
+
     // 等 runtime 就绪 + 引导工具注册
     let guideReady = false
     const deadline = Date.now() + GUIDE_WAIT_MS

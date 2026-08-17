@@ -11,6 +11,9 @@ envelope（stdout 唯一格式）：
 import json
 import os
 import sys
+import time
+
+_STARTED_AT = time.monotonic()
 
 EXIT_BY_CATEGORY = {
     'input': 2,
@@ -44,8 +47,12 @@ def sanitize(text):
     return text
 
 
+def _timing_ms():
+    return int((time.monotonic() - _STARTED_AT) * 1000)
+
+
 def ok(result):
-    json.dump({'ok': True, 'result': result}, sys.stdout, ensure_ascii=False)
+    json.dump({'ok': True, 'result': result, 'timingMs': _timing_ms()}, sys.stdout, ensure_ascii=False)
     sys.stdout.write('\n')
     sys.stdout.flush()
 
@@ -53,7 +60,7 @@ def ok(result):
 def fail(category, message, exit_code=None):
     """输出 envelope 并以稳定退出码退出；stderr 只留一行脱敏摘要。"""
     message = sanitize(message)
-    json.dump({'ok': False, 'error': {'category': category, 'message': message}},
+    json.dump({'ok': False, 'error': {'category': category, 'message': message}, 'timingMs': _timing_ms()},
               sys.stdout, ensure_ascii=False)
     sys.stdout.write('\n')
     sys.stdout.flush()

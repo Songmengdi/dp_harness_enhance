@@ -4,6 +4,7 @@ import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-settings'
 import { Config, assertSafeSubdir, type VisionBridgeConfig } from './config.js'
 import { createLogger } from './logger.js'
@@ -28,7 +29,7 @@ import { defineLongScreenshotOcrTool } from './tools/long-screenshot-ocr.js'
 import { defineHtmlScreenshotTool } from './tools/html-screenshot.js'
 
 export const name = 'dsh-vision-bridge'
-export const inject = ['attachments', 'agents', 'credentials', 'systemPrompt']
+export const inject = ['attachments', 'agents', 'credentials', 'systemPrompt', 'settings']
 export { Config }
 export type { VisionBridgeConfig }
 
@@ -128,7 +129,7 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
     logger,
     attachments: ctx.attachments,
     remote,
-    autoDescribeBashShots: config.autoDescribeBashShots,
+    isAutoDescribeEnabled: () => effective.autoDescribeBashShots,
   })
   seamless.attach()
 
@@ -146,6 +147,60 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
     for (const agent of ctx.agents.list()) exposure.handleAgentCreated(agent)
   }
 
+  // ── 05 票：配置热更新（settings 段 dsh-vision-bridge）——先验证、成功才原子切换 ──
+  const effective: VisionBridgeConfig = { ...config }
+  let hotReloading = false
+  let settingsScope: { get: () => VisionBridgeConfig } | undefined
+  try {
+    const settingsService = ctx.get('settings')
+    settingsScope = settingsService?.register(settingsNamespace('dsh-vision-bridge'), Config, {
+      base: { ...config },
+      applies: 'live',
+    })
+  } catch (e) {
+    logger.warn({}, `settings 段注册失败（热更新不可用，装配行配置照常生效）: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  async function applySettingsOverlay(): Promise<void> {
+    if (hotReloading || settingsScope === undefined) return
+    hotReloading = true
+    try {
+      let next: VisionBridgeConfig
+      try {
+        next = settingsScope.get()
+      } catch (e) {
+        logger.error({}, `settings 热更新被拒（schema 校验失败，旧配置继续服务）: ${e instanceof Error ? e.message : String(e)}`)
+        return
+      }
+      const reconfigured = await manager.reconfigure({
+        python: next.python,
+        managed: next.managed,
+        venvDir: next.venvDir,
+        requirementsFile: next.requirementsFile,
+        prepareTimeoutMs: next.prepareTimeoutMs,
+      })
+      if (!reconfigured.ok) {
+        logger.error({}, `配置被拒，旧运行时继续服务: ${reconfigured.reason}`)
+        return
+      }
+      // 非运行时字段：候选已成功切换，直接生效
+      remote.updateConfig({
+        endpoint: next.endpoint,
+        model: next.model,
+        credential: next.credential,
+        language: next.language,
+        visionTimeoutMs: next.visionTimeoutMs,
+        maxRetries: next.maxRetries,
+      })
+      fences.updateAllowedDirs(next.allowedDirs)
+      cache.setTtl(next.glanceCacheTtlMs)
+      effective.autoDescribeBashShots = next.autoDescribeBashShots
+      logger.info({ generation: manager.generation?.id }, 'settings 热更新完成（generation 原子切换）')
+    } finally {
+      hotReloading = false
+    }
+  }
+
   // ── 生命周期 ──
   ctx.on('agent/created', (payload: { agent: Parameters<typeof exposure.handleAgentCreated>[0] }) => {
     exposure.handleAgentCreated(payload.agent)
@@ -154,17 +209,20 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
     cache.drop(payload.agent.id)
     exposure.handleAgentDisposed(payload.agent)
   })
-  // 能力缓存失效（成功正缓存；失败带 TTL，不会一次失败永久误判）
+  // 能力缓存失效（成功正缓存；失败带 TTL，不会一次失败永久误判）+ 配置热更新
   ctx.on('settings/updated', () => {
     capability.invalidate()
     for (const agent of ctx.agents.list()) void exposure.recheckCapability(agent)
+    void applySettingsOverlay()
   })
   ctx.on('llm/adapters-updated', () => {
     capability.invalidate()
     for (const agent of ctx.agents.list()) void exposure.recheckCapability(agent)
   })
 
-  ctx.effect(() => () => {
+  // 卸载顺序：先取消活动视觉操作并等待 → 逐 Agent 回收工具/skill → 关运行时管理器
+  ctx.effect(() => async () => {
+    await runtime.dispose()
     exposure.disposeAll()
     manager.dispose()
   })

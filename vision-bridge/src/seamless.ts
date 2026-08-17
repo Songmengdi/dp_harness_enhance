@@ -31,7 +31,8 @@ export interface SeamlessDeps {
   logger: BridgeLogger
   attachments?: AttachmentStore
   remote?: RemoteVision
-  autoDescribeBashShots: boolean
+  /** 05 票热更新：自动描述开关走惰性读取。 */
+  isAutoDescribeEnabled: () => boolean
 }
 
 interface PreStepPayload {
@@ -167,7 +168,7 @@ export class Seamless {
       if (found.length === 0) return next()
       this.deps.exposure.activate(agent, 'bash-shot')
       let extra = '【视觉桥】检测到图片 ' + found.join('、') + '。建议：vision_glance 查看/问答；vision_ground 定位 + vision_crop 裁剪。'
-      if (this.deps.autoDescribeBashShots && this.deps.remote !== undefined) {
+      if (this.deps.isAutoDescribeEnabled() && this.deps.remote !== undefined) {
         try {
           const fence = await this.deps.fences.forWorkspace(workspaceOf(agent))
           const reals: string[] = []

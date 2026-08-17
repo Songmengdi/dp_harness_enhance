@@ -50,4 +50,10 @@
 ## 完成记录（由执行者填写）
 
 - 验证命令与结果摘要：
+  - `cd vision-bridge && npm run verify` → 门禁 OK、tsc 0 error、`node --test` 55 用例全绿（含真实 host headless e2e）。
+  - `npm run e2e`（`scripts/sync-e2e-profile.mjs` 同步 `~/.dsh/profiles/vision-bridge-e2e` → `dsh --profile vision-bridge-e2e`）在真实 dsh-base 组合里跑通并输出 `{"pass":true}`：引导工具注册（未激活无执行工具 schema）→ 真实 attachments 保存粘贴图 → agent/pre-step 瀑布替换为工作区路径+同消息意图 → 粘贴自动激活（vision_ground 可见、vision_activate 隐藏）→ ctx.tools.execute 真实管线 vision_ground → vision_crop → vision_pixel_diff（假上游）→ read 读图被拦截（两行指路）。
+  - `test/seamless.test.js` 单元覆盖：粘贴内容哈希去重落盘（同内容第二次不重复落盘）、无伴生文本不编造意图、视觉模型会话图片块原样放行、read/read_image deny 恰好两行且不含协议全文、bash 出图注入「路径+建议」（自动描述默认关；开启时最多前 2 张 + 取助手最后一段为 hint + 失败不阻断原结果）、skill 工具返回内容含标记即激活。
+  - `test/exposure.test.js` 覆盖：未激活只有引导工具+skill、激活后引导回收、视觉模型整套隐身、runtime 未就绪零发布、会话恢复凭持久 tool/call 证据直接激活（不再注册引导工具）、卸载回收全部注册（含 skill）。
 - 遗留问题（若有）：
+  - bash 出图的自动描述走 `vision_glance` 远程能力：未配置 endpoint/model 时自动描述静默跳过（只注入路径+建议），符合「失败不阻断原结果」。
+  - 会话恢复证据取「工具调用记录」；仅粘贴触发但模型从未调用 vision_* 工具的会话，恢复后回到未激活态（引导工具仍在，属可接受的最小证据集）。

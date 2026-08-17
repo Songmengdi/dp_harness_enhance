@@ -1,3 +1,4 @@
 # dsh-vision runtime 锁定依赖（managed venv 用）。
 # 只允许精确版本；改版本 = 改锁定，需要跑全量测试后提交。
 Pillow==11.1.0
+certifi==2025.1.31

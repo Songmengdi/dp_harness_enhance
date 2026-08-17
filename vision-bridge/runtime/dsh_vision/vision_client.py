@@ -7,12 +7,22 @@
 import base64
 import json
 import os
+import ssl
 import time
 import urllib.error
 import urllib.request
 
 from . import contract
 from .prompts import focus_hint
+
+
+def _ssl_context():
+    """TLS 校验上下文：优先 certifi（macOS 框架 Python 默认 CA 常常为空）。"""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
 
 
 def data_url(path):
@@ -50,7 +60,7 @@ class UpstreamError(Exception):
 def _http_post_json(url, payload, headers, timeout_s):
     body = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(url, data=body, headers=headers, method='POST')
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+    with urllib.request.urlopen(req, timeout=timeout_s, context=_ssl_context()) as resp:
         return json.loads(resp.read().decode('utf-8'))
 
 

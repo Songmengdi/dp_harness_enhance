@@ -26,11 +26,19 @@ dsh 宿主 `dsh-host-apiproxy` 在 `prompt` 与 `selectModel` 两个端点对不
 拒绝带图消息，Route C 的粘贴桥会被挡在插件之外。补丁让「装配行含 dsh-vision-bridge」
 的 profile 放行图片（图片由插件 `agent/pre-step` 落地为路径，模型只看到路径文本）。
 
-目标文件：
-`<dsh 安装目录>/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-host-apiproxy/lib/index.js`
-（本机：`/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-host-apiproxy/lib/index.js`）
+**目标文件：每个会启动该 profile 的进程所解析到的那份 `dsh-host-apiproxy` 都要打。**
+实际存在多份副本——dsh 安装目录一份 + 每个 profile 的 pnpm store 一份。用 find 找全：
 
-三处修改（可对照 grep `imageBridgeActive` 找回）：
+```bash
+find /opt/homebrew/lib/node_modules/@deepseek-ai/dsh \
+     ~/.dsh/profiles -path "*dsh-host-apiproxy/lib/index.js" 2>/dev/null
+```
+
+本机现状（已打）：`/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-host-apiproxy/lib/index.js`
+以及 `~/.dsh/profiles/web/node_modules/.pnpm/@deepseek-ai+dsh-host-apiproxy@*/node_modules/@deepseek-ai/dsh-host-apiproxy/lib/index.js`（两份）。
+**教训：web 进程加载的是 profile 自己的 pnpm store 副本，不是 dsh 安装目录那份——只打一处会漏。**
+
+三处修改（对每一份文件，可对照 grep `imageBridgeActive` 找回）：
 
 1. 新增函数（放在 `selectionFor` 之前）：
 

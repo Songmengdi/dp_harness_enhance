@@ -54,4 +54,10 @@ out: { source:{path,bytes}, viewport:{width,height}, rendered:{width,height}, ar
 ## 完成记录（由执行者填写）
 
 - 验证命令与结果摘要：
+  - `cd vision-bridge && npm run verify` → 门禁 OK、tsc 0 error、`node --test` 60 用例全绿。
+  - `test/vision.tools04.integration.test.js`：trace（20x20 图标 scale=4 放大分析、输出 viewBox 保持 0 0 20 20、SVG 单一根且无 script/javascript:/foreignObject/DOCTYPE）；extract_foreground（透明 PNG alpha 通道、components/coveragePct、manual 重试、全出血图 auto 失败并提示 manual）；long_screenshot_ocr（splitOnly 零远程请求、resume 复用分块与 OCR 侧车、完整 OCR 合并 Markdown + 审计 + 分块产物、复用后不再发远程）；html_screenshot（本地 HTML → 320x240 PNG、拒绝非 HTML 与 URL）。
+  - 闭合示例 `node scripts/render-verify.mjs` → `v1=22.96% v2=0.44%（初版 > 终版 ✓）`，数值证据写入 `examples/render-verify/RESULTS.md`；`test/example.render.test.js` 断言数值并校验 RESULTS.md（无真实视觉 key 可跑）。
+  - Python 侧子命令直接冒烟：trace / extract_foreground / long_screenshot_ocr(splitOnly) / html_screenshot（真实 Chrome headless，禁网 + 一次性临时 profile，产物文件为准并在结束后终止/清理浏览器进程）。
 - 遗留问题（若有）：
+  - `vision_long_screenshot_ocr` 的 `jobs` 并发参数当前串行执行（接受并透传）；量大时可后续用线程池并行 OCR，不影响契约形状。
+  - trace 只恢复外轮廓（不挖孔），对「扁平图形重建」场景够用；带孔图形如需精确填充可在后续迭代。

@@ -66,6 +66,6 @@ dsh --profile <profile> --dump-config   # 末尾应出现 `# == dsh-vision-bridg
 |---|---|---|
 | 01 | 旧版两 bug 修复 + 新架构基座（media/frames 首条垂直切片） | 完成 |
 | 02 | 核心六工具 + 产物管线 | 待办 |
-| 03 | Seamless 桥 + intent + 自动激活 | 待办 |
+| 03 | Seamless 桥 + intent + 自动激活 | 完成 |
 | 04 | trace/extract_foreground/long_screenshot_ocr/html_screenshot | 待办 |
 | 05 | 生产化收口 + 全量 e2e + 本地切换 | 待办 |

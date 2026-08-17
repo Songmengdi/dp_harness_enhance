@@ -18,6 +18,6 @@ export function jsonOutput() {
 }
 
 export function agentWorkspace(exec: { agent?: unknown }): string | undefined {
-  const agent = exec.agent as { session?: { cwd?: string } } | undefined
-  return agent?.session?.cwd
+  const agent = exec.agent as { session?: { header?: { cwd?: string } } } | undefined
+  return agent?.session?.header?.cwd
 }

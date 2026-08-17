@@ -109,7 +109,7 @@ function makeEnv(up) {
     logger: noop,
   })
   const runtime = new Runtime({ manager, defaultTimeoutMs: 60_000, maxConcurrency: 4, logger: noop, validators: makeValidators() })
-  const fences = new FenceRegistry([], 'artifacts/vision-bridge')
+  const fences = new FenceRegistry([], 'artifacts/vision-bridge', 'inputs/vision-bridge')
   const fakeCtx = {
     credentials: {
       resolve: async (ref) => (String(ref) === 'TEST_VISION_KEY' ? { value: SECRET, source: 'test' } : undefined),
@@ -150,7 +150,7 @@ function makeEnv(up) {
 function execFor(ws, signal = undefined) {
   return {
     signal: signal ?? new AbortController().signal,
-    agent: { id: 'sess-02', session: { cwd: ws }, options: {} },
+    agent: { id: 'sess-02', session: { header: { cwd: ws } }, options: {} },
     callId: 'c1',
     name: '',
     arguments: {},

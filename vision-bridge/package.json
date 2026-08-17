@@ -46,6 +46,7 @@
     "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
     "@deepseek-ai/dsh-scope": "0.1.0-rc.6",
     "@deepseek-ai/dsh-session": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-settings": "0.1.0-rc.6",
     "@deepseek-ai/dsh-skill": "0.1.0-rc.6",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
     "@types/node": "^22.0.0",
@@ -58,6 +59,7 @@
     "test": "npm run build && node --test test/*.test.js",
     "gate": "node scripts/test-gate.mjs",
     "verify": "node scripts/test-gate.mjs && npm run typecheck && npm run build && npm run test",
-    "pack:dry": "npm pack --dry-run"
+    "pack:dry": "npm pack --dry-run",
+    "e2e": "node scripts/sync-e2e-profile.mjs && dsh --profile vision-bridge-e2e run-vision-bridge-e2e"
   }
 }

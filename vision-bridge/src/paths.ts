@@ -39,6 +39,7 @@ export class PathFence {
     private readonly allowedReal: string[],
     readonly artifactsDir: string,
     private readonly artifactsRel: string,
+    readonly inputsDir: string,
   ) {}
 
   /** workspace 与 allowedDirs 全部 realpath；任何缺失/异常即 config 错误。 */
@@ -46,6 +47,7 @@ export class PathFence {
     workspace: string | undefined,
     allowedDirs: string[],
     artifactsRel: string,
+    inputsRel: string,
   ): Promise<PathFence> {
     let workspaceReal: string
     try {
@@ -62,7 +64,8 @@ export class PathFence {
       }
     }
     const artifactsDir = path.join(workspaceReal, artifactsRel)
-    return new PathFence(workspace || process.cwd(), workspaceReal, allowedReal, artifactsDir, artifactsRel)
+    const inputsDir = path.join(workspaceReal, inputsRel)
+    return new PathFence(workspace || process.cwd(), workspaceReal, allowedReal, artifactsDir, artifactsRel, inputsDir)
   }
 
   private admitted(real: string): boolean {
@@ -95,6 +98,12 @@ export class PathFence {
   async ensureArtifactsDir(): Promise<string> {
     await fsp.mkdir(this.artifactsDir, { recursive: true })
     return this.artifactsDir
+  }
+
+  /** 输入文件落地目录（粘贴截图持久化，03 票用）。 */
+  async ensureInputsDir(): Promise<string> {
+    await fsp.mkdir(this.inputsDir, { recursive: true })
+    return this.inputsDir
   }
 
   /** 每次调用一个 staging 目录（与产物目录同文件系统，原子 rename 有效）。 */
@@ -156,19 +165,20 @@ export class PathFence {
   }
 }
 
-/** 按工作区缓存 fence（allowedDirs 与产物子目录不变）。 */
+/** 按工作区缓存 fence（allowedDirs 与产物/输入子目录不变）。 */
 export class FenceRegistry {
   private readonly cache = new Map<string, PathFence>()
   constructor(
     private readonly allowedDirs: string[],
     private readonly artifactsRel: string,
+    private readonly inputsRel: string,
   ) {}
 
   async forWorkspace(workspace: string | undefined): Promise<PathFence> {
     const key = workspace || process.cwd()
     const hit = this.cache.get(key)
     if (hit) return hit
-    const fence = await PathFence.create(workspace, this.allowedDirs, this.artifactsRel)
+    const fence = await PathFence.create(workspace, this.allowedDirs, this.artifactsRel, this.inputsRel)
     this.cache.set(key, fence)
     return fence
   }

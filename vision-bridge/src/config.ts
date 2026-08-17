@@ -36,6 +36,8 @@ export const Config = Schema.object({
   maxRetries: Schema.number().default(2).min(0).max(5),
   /** vision_glance 会话级成功缓存 TTL（毫秒，0 = 关闭）。 */
   glanceCacheTtlMs: Schema.number().default(1800000).min(0),
+  /** seamless 桥：bash 出图后自动补 VLM 描述（默认关；开启时最多前 2 张、带当前意图）。 */
+  autoDescribeBashShots: Schema.boolean().default(false),
 })
 
 export interface VisionBridgeConfig {
@@ -56,6 +58,7 @@ export interface VisionBridgeConfig {
   visionTimeoutMs: number
   maxRetries: number
   glanceCacheTtlMs: number
+  autoDescribeBashShots: boolean
 }
 
 /** 子目录名必须是相对路径、不能逃逸工作区。 */

@@ -1,16 +1,18 @@
-import { promises as fsp } from 'node:fs'
+import { promises as fsp, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
+import type {} from '@deepseek-ai/dsh-settings'
 import { Config, assertSafeSubdir, type VisionBridgeConfig } from './config.js'
 import { createLogger } from './logger.js'
 import { FenceRegistry } from './paths.js'
 import { RuntimeManager } from './runtime-manager.js'
 import { Runtime } from './runtime.js'
 import { createCapabilityChecker } from './capabilities.js'
-import { Exposure } from './exposure.js'
+import { Exposure, activationSection } from './exposure.js'
+import { Seamless } from './seamless.js'
 import { makeValidators } from './validators.js'
 import { RemoteVision, GlanceCache } from './remote.js'
 import { defineMediaTool } from './tools/media.js'
@@ -22,6 +24,7 @@ import { definePixelDiffTool } from './tools/pixel-diff.js'
 import { defineDominantColorsTool } from './tools/dominant-colors.js'
 
 export const name = 'dsh-vision-bridge'
+export const inject = ['attachments', 'agents', 'credentials', 'systemPrompt']
 export { Config }
 export type { VisionBridgeConfig }
 
@@ -42,7 +45,8 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
   }
 
   const logger = createLogger(ctx)
-  const packageRoot = dirname(fileURLToPath(import.meta.url))
+  // lib/ 在包根下：import.meta.url 是 lib/index.js，往上一级才是包根
+  const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
   const runtimeDir = join(packageRoot, 'runtime')
   const homeRoot = process.env.DSH_HOME || join(os.homedir(), '.dsh')
   const stateDir = join(homeRoot, 'storages', 'dsh-vision-bridge')
@@ -67,7 +71,7 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
     logger,
     validators: makeValidators(),
   })
-  const fences = new FenceRegistry(config.allowedDirs, config.artifactsDir)
+  const fences = new FenceRegistry(config.allowedDirs, config.artifactsDir, config.inputsDir)
   const capability = createCapabilityChecker(ctx, logger)
 
   const remote = new RemoteVision(ctx, runtime, {
@@ -100,7 +104,33 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
     execTools: () => execTools,
     execToolNames: () => execTools.map((t) => t.name),
     logger,
+    skillDefinition: {
+      name: 'vision-bridge',
+      description: '视觉桥：纯文本模型指挥视觉工具看图——vision_glance/ground/detect 提语义问题，vision_crop/pixel_diff/dominant_colors 做像素级核对。收到「读不了图片」提示或需要看图时加载本 skill。',
+      content: readFileSync(join(packageRoot, 'skills', 'vision-bridge', 'SKILL.md'), 'utf8'),
+    },
+    protocolSection: activationSection,
   })
+
+  const seamless = new Seamless(ctx, {
+    exposure,
+    seesImages: capability.seesImages,
+    fences,
+    logger,
+    attachments: ctx.attachments,
+    remote,
+    autoDescribeBashShots: config.autoDescribeBashShots,
+  })
+  seamless.attach()
+
+  // 激活后的协议说明按会话隔离注入（完整协议只在 skill 内容里）
+  if (ctx.systemPrompt !== undefined) {
+    ctx.systemPrompt.section({
+      name: 'vision:bridge-protocol',
+      order: 135,
+      text: (assembleContext) => exposure.protocolFor(assembleContext.scope),
+    })
+  }
 
   function publishGuides(): void {
     if (startupError !== null || !manager.ready) return
@@ -115,7 +145,15 @@ export function apply(ctx: Context, config: VisionBridgeConfig) {
     cache.drop(payload.agent.id)
     exposure.handleAgentDisposed(payload.agent)
   })
-  ctx.on('llm/adapters-updated', () => capability.invalidate())
+  // 能力缓存失效（成功正缓存；失败带 TTL，不会一次失败永久误判）
+  ctx.on('settings/updated', () => {
+    capability.invalidate()
+    for (const agent of ctx.agents.list()) void exposure.recheckCapability(agent)
+  })
+  ctx.on('llm/adapters-updated', () => {
+    capability.invalidate()
+    for (const agent of ctx.agents.list()) void exposure.recheckCapability(agent)
+  })
 
   ctx.effect(() => () => {
     exposure.disposeAll()

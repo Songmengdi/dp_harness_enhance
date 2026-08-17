@@ -49,6 +49,8 @@ def run(spec):
             x1, y1 = gx * cell_w, gy * cell_h
             x2 = min(w, x1 + cell_w)
             y2 = min(h, y1 + cell_h)
+            if x2 <= x1 or y2 <= y1:
+                continue  # 小图网格退化，跳过空单元格
             cell = diff.crop((x1, y1, x2, y2))
             cs = sum(ImageStat.Stat(cell).sum) / 3.0
             pct = round(cs / ((x2 - x1) * (y2 - y1) * 255.0) * 100.0, 2)

@@ -36,7 +36,7 @@ function makeVideo(dir, name = 'clip.mp4') {
 function execFor(workspace, signal = undefined) {
   return {
     signal: signal ?? new AbortController().signal,
-    agent: { session: { cwd: workspace }, options: {}, id: 'x' },
+    agent: { session: { header: { cwd: workspace } }, options: {}, id: 'x' },
     callId: 'c1',
     name: '',
     arguments: {},
@@ -116,7 +116,7 @@ test('端到端: vision_media 结构化 JSON + vision_frames 抽帧提交产物�
       logger: noop,
       validators: makeValidators(),
     })
-    const fences = new FenceRegistry([], 'artifacts/vision-bridge')
+    const fences = new FenceRegistry([], 'artifacts/vision-bridge', 'inputs/vision-bridge')
     const mediaTool = defineMediaTool({ fences, runtime })
     const framesTool = defineFramesTool({ fences, runtime })
 
@@ -171,7 +171,7 @@ test('端到端: 符号链接逃逸在工具层被拒绝', { timeout: 240_000 },
     const runtime = new Runtime({
       manager, defaultTimeoutMs: 60_000, maxConcurrency: 2, logger: noop, validators: makeValidators(),
     })
-    const fences = new FenceRegistry([], 'artifacts/vision-bridge')
+    const fences = new FenceRegistry([], 'artifacts/vision-bridge', 'inputs/vision-bridge')
     const mediaTool = defineMediaTool({ fences, runtime })
     await assert.rejects(
       () => mediaTool.execute({ path: 'link.mp4' }, execFor(ws)),

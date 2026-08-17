@@ -20,7 +20,7 @@ function makeWorkspace() {
 
 test('fence: 工作区内相对/绝对路径可解析', async () => {
   const { ws, outside, allowed } = makeWorkspace()
-  const fence = await PathFence.create(ws, [allowed], 'artifacts/vision-bridge')
+  const fence = await PathFence.create(ws, [allowed], 'artifacts/vision-bridge', 'inputs/vision-bridge')
   const real = await fence.resolveInput('a.png')
   assert.ok(real.endsWith('a.png'))
   const realAbs = await fence.resolveInput(join(ws, 'a.png'))
@@ -34,7 +34,7 @@ test('fence: 工作区内相对/绝对路径可解析', async () => {
 
 test('fence: 工作区外文件被拒绝（input 类别）', async () => {
   const { ws, outside, allowed } = makeWorkspace()
-  const fence = await PathFence.create(ws, [allowed], 'artifacts/vision-bridge')
+  const fence = await PathFence.create(ws, [allowed], 'artifacts/vision-bridge', 'inputs/vision-bridge')
   await assert.rejects(
     () => fence.resolveInput(join(outside, 'secret.png')),
     (e) => e instanceof VisionError && e.category === 'input',
@@ -46,7 +46,7 @@ test('fence: 工作区外文件被拒绝（input 类别）', async () => {
 
 test('fence: 符号链接逃逸被拒绝', async () => {
   const { ws, outside, allowed } = makeWorkspace()
-  const fence = await PathFence.create(ws, [allowed], 'artifacts/vision-bridge')
+  const fence = await PathFence.create(ws, [allowed], 'artifacts/vision-bridge', 'inputs/vision-bridge')
   await assert.rejects(
     () => fence.resolveInput(join(ws, 'escape.png')),
     (e) => e instanceof VisionError && e.category === 'input',
@@ -58,7 +58,7 @@ test('fence: 符号链接逃逸被拒绝', async () => {
 
 test('fence: 产物 staging 校验后原子提交进固定产物目录', async () => {
   const { ws, outside, allowed } = makeWorkspace()
-  const fence = await PathFence.create(ws, [allowed], 'artifacts/vision-bridge')
+  const fence = await PathFence.create(ws, [allowed], 'artifacts/vision-bridge', 'inputs/vision-bridge')
   const staging = await fence.beginStaging()
   writeFileSync(join(staging, 'frame_01.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 9]))
   const committed = await fence.commitFiles(staging, [{
@@ -99,7 +99,7 @@ test('fence: 产物 staging 校验后原子提交进固定产物目录', async (
 test('fence: allowedDirs 不存在 → config 错误', async () => {
   const ws = mkdtempSync(join(os.tmpdir(), 'vb-ws-'))
   await assert.rejects(
-    () => PathFence.create(ws, ['/definitely/not/here-vb'], 'artifacts/vision-bridge'),
+    () => PathFence.create(ws, ['/definitely/not/here-vb'], 'artifacts/vision-bridge', 'inputs/vision-bridge'),
     (e) => e instanceof VisionError && e.category === 'config',
   )
   rmSync(ws, { recursive: true, force: true })

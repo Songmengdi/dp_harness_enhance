@@ -24,6 +24,9 @@ Python runtime      python -m dsh_vision <sub> --spec '<json>'（独立 venv，�
 | 路径与产物 | `src/paths.ts` | 输入 realpath 围栏（会话工作区 + allowedDirs，符号链接逃逸拒绝）；产物：staging 目录写入 → 格式探针 → 同文件系统原子 rename 提交 |
 | 能力判定 | `src/capabilities.ts` | `llm.resolveModelInfo` 判原生图片能力；成功正缓存，失败 TTL 30s |
 | 远程视觉 | `src/remote.ts` | D7 凭据管线：只存 DSH Credential 引用，每次现取现用、只进子进程环境；glance 会话级缓存（key = 图片内容哈希 + query/ocr/region + 端点/模型/语言/凭据哈希） |
+| Seamless 桥 | `src/seamless.ts` | 三条钩子（粘贴落地 / read 拦截 / bash 出图）+ skill 加载检测，全部按会话隔离（挂在 exposure 状态机上）；视觉模型会话整套不触发 |
+| intent | `src/intent.ts` | 粘贴取同消息非图片文本；bash 自动描述取助手最后一段（回退最新真实用户请求）；过滤注入内容；一律截尾 500 字符 |
+| skill 单源 | `skills/vision-bridge/SKILL.md` | 完整明眼人协议唯一来源；按 Agent 注册（文本模型会话才可见）；加载即激活（返回内容标记判定） |
 | 提示词单源 | `runtime/dsh_vision/prompts.py` | 明眼人协议 + focus hint 模板唯一来源；hint 截尾 500 字符并声明「只用于判断重点，与图无关请忽略」 |
 | 远程客户端 | `runtime/dsh_vision/vision_client.py` | OpenAI-compatible；429/5xx/网络错误退避重试（最多 2 次）；整操作硬超时；空/非结构化回答 = output 错误；`finish_reason==length` → `truncated:true` |
 | Python 契约 | `runtime/dsh_vision/contract.py` | stdout 单段 JSON envelope；退出码 0/2/3/4/5/6 = ok/input/config/upstream/runtime/output；stderr 脱敏（凭据值替换） |
@@ -52,6 +55,7 @@ Python runtime      python -m dsh_vision <sub> --spec '<json>'（独立 venv，�
 | language | `中文` | 进视觉 prompt 与 glance 缓存键 |
 | visionTimeoutMs / maxRetries | `90000` / `2` | 远程硬超时与 429/5xx/网络退避重试上限 |
 | glanceCacheTtlMs | `1800000` | glance 会话级成功缓存 TTL（0 关闭） |
+| autoDescribeBashShots | `false` | seamless：bash 出图自动补 VLM 描述（开启时最多前 2 张、带当前意图、失败不阻断） |
 
 ## 错误类别（稳定）
 
@@ -70,4 +74,5 @@ Host 侧统一成 `VisionError(category, message)`，工具失败时模型看到
 - 引导工具 `vision_activate`：无参；输出 `{activated, tools:[...]}`；已激活返回 `activated:false`；激活后对本 Agent 隐藏。
 - `vision_media(path)` → 时长/分辨率/流/编码 JSON；`vision_frames(path, times≤8)` → `{dir, frames:[{time,path}]}`（帧文件已在工作区产物目录）。
 - 02 票六个工具（glance/ground/detect/crop/pixel_diff/dominant_colors）与产物/缓存/凭据契约见 `issues/02`；ground/detect 指定 region 搜索时输出坐标仍映射回原图。
-- 03/04 的剩余工具与 seamless 桥的冻结契约见各票文件。
+- 03 票冻结状态机：激活条件 = 粘贴落地 / read 读图被拦截 / bash 出图被检测 / 成功调用 vision_activate / skill 工具加载 vision-bridge skill；会话恢复凭持久事件里的 vision_* 调用证据重新 attach。
+- 04 的剩余工具契约见 `issues/04`。
